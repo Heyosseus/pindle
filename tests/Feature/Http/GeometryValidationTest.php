@@ -18,17 +18,6 @@ beforeEach(function (): void {
     $this->reviewer = User::query()->create(['name' => 'Reviewer', 'tenant_id' => 1]);
 });
 
-/** A two-page A4 document whose structure a shallow reader can actually see. */
-function twoPagePdf(): string
-{
-    return "%PDF-1.4\n"
-        ."1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
-        ."2 0 obj\n<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>\nendobj\n"
-        ."3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>\nendobj\n"
-        ."4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>\nendobj\n"
-        ."trailer\n<< /Root 1 0 R >>\n%%EOF\n";
-}
-
 function readableInvoice(): Invoice
 {
     Storage::disk('documents')->put('invoices/readable.pdf', twoPagePdf());

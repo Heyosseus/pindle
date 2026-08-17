@@ -1,17 +1,24 @@
 {
     "name": "heyosseus/pindle",
-    "description": "Annotate PDFs attached to your Eloquent models: highlights, notes and comment threads pinned to exact coordinates on the page, stored in your own database. Blade, Livewire or Filament. No npm, no Vite.",
+    "description": "Your team marks up PDFs inside your Laravel app instead of emailing them around. Highlights and comment threads pinned to exact page coordinates, stored in your own database and governed by your own policies — with orphan detection when a document is re-issued. Blade, Livewire or Filament. No npm, no Vite, self-hosted.",
     "keywords": [
         "laravel",
         "filament",
+        "filament-plugin",
         "livewire",
         "pdf",
+        "pdf-annotation",
+        "pdf-viewer",
         "annotations",
+        "document-review",
+        "markup",
+        "redline",
         "highlight",
         "comments",
-        "review",
-        "documents",
-        "viewer"
+        "collaboration",
+        "approval",
+        "contracts",
+        "invoices"
     ],
     "license": "MIT",
     "homepage": "https://github.com/heyosseus/pindle",

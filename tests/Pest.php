@@ -78,6 +78,23 @@ function annotate(
 }
 
 /**
+ * A two-page A4 document whose structure the shallow bounds reader can see.
+ *
+ * Not a PDF any reader would open -- it has no content streams and no xref --
+ * but it carries the page tree and the media boxes, which is all the geometry
+ * checks read.
+ */
+function twoPagePdf(): string
+{
+    return "%PDF-1.4\n"
+        ."1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n"
+        ."2 0 obj\n<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>\nendobj\n"
+        ."3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>\nendobj\n"
+        ."4 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] >>\nendobj\n"
+        ."trailer\n<< /Root 1 0 R >>\n%%EOF\n";
+}
+
+/**
  * The list endpoint's URL for one document of one model.
  */
 function listUrl(Model $model, string $key = 'default'): string

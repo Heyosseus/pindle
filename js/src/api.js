@@ -67,6 +67,20 @@ export class Api {
     return this.update(id, { resolved });
   }
 
+  /**
+   * Move an orphan onto the document that replaced the one it was drawn on.
+   *
+   * Its own endpoint rather than an update, because it is the only call that
+   * rewrites the hash an orphan is judged by -- and the server re-hashes from
+   * the bytes, so the client cannot declare an annotation current.
+   */
+  reanchor(id, page, rects) {
+    return this.send('POST', `${this.base}/annotations/${encodeURIComponent(id)}/reanchor`, {
+      page,
+      rects,
+    });
+  }
+
   comment(annotationId, body, parentId = null) {
     return this.send('POST', `${this.base}/annotations/${encodeURIComponent(annotationId)}/comments`, {
       body,

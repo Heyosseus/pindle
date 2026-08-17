@@ -24,10 +24,7 @@ export function drawThread(panel, annotation, options = {}) {
   panel.append(header(annotation, options));
 
   if (annotation.orphaned) {
-    panel.append(
-      el('p', { class: 'pindle-thread__warning' },
-        'The document has been replaced since this was written, so it may no longer point at the right place.'),
-    );
+    panel.append(orphanNotice(annotation, options));
   }
 
   const list = el('ol', { class: 'pindle-thread__list' });
@@ -40,6 +37,62 @@ export function drawThread(panel, annotation, options = {}) {
   panel.append(composer(annotation, null, options, 'Add a comment'));
 
   return panel;
+}
+
+/**
+ * What an orphan says for itself, and what can be done about it.
+ *
+ * The offer to go looking is the point. Every other tool leaves a reviewer with
+ * a comment pointing at coordinates on a page that moved and no way to tell
+ * whether it still means anything; this one can go and find the words. It
+ * offers, and a person decides -- moving somebody's objection automatically,
+ * onto text that merely looked similar, would be a worse failure than leaving
+ * it flagged.
+ */
+function orphanNotice(annotation, options) {
+  const notice = el('div', { class: 'pindle-thread__warning' }, [
+    el('p', { class: 'pindle-thread__warning-text' },
+      'The document has been replaced since this was written, so it may no longer point at the right place.'),
+  ]);
+
+  if (options.readonly) {
+    return notice;
+  }
+
+  const suggestion = options.suggestion;
+
+  if (!suggestion) {
+    notice.append(
+      el('button', {
+        type: 'button',
+        class: 'pindle-thread__find',
+        onclick: () => options.onFind?.(annotation.id),
+      }, annotation.text_snippet ? 'Find these words in this version' : 'No text was recorded to search for'),
+    );
+
+    return notice;
+  }
+
+  notice.append(
+    el('p', { class: 'pindle-thread__found' },
+      suggestion.unique
+        ? `Found on page ${suggestion.page}.`
+        : `Found on page ${suggestion.page}, but the same words appear elsewhere too.`),
+    el('div', { class: 'pindle-thread__actions' }, [
+      el('button', {
+        type: 'button',
+        class: 'pindle-thread__submit',
+        onclick: () => options.onAccept?.(),
+      }, 'Move it there'),
+      el('button', {
+        type: 'button',
+        class: 'pindle-thread__remove',
+        onclick: () => options.onDismiss?.(),
+      }, 'Leave it'),
+    ]),
+  );
+
+  return notice;
 }
 
 function header(annotation, options) {

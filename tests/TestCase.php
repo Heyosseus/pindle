@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Pindle\Tests;
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Schema;
@@ -107,6 +108,11 @@ abstract class TestCase extends Orchestra
     protected function tearDown(): void
     {
         Pindle::flush();
+
+        // The morph map is static too, and a test that registers an alias would
+        // otherwise change how every later test names its models.
+        Relation::morphMap([], false);
+        Relation::requireMorphMap(false);
 
         parent::tearDown();
     }

@@ -4,6 +4,7 @@ import { Api } from './api.js';
 import { clampToPage, quarterTurns, roundAnchor, textRectsToAnchors, viewportSize, viewportToAnchor } from './coordinates.js';
 import { clear, el, emit } from './dom.js';
 import { drawOverlay } from './overlay.js';
+import { locate } from './reanchor.js';
 import { Store } from './store.js';
 import { drawThread } from './thread.js';
 
@@ -51,6 +52,7 @@ export class Viewer {
     this.store.subscribe(() => this.redrawAnnotations());
     this.renderPages();
     this.redrawAnnotations();
+    this.bindKeys();
 
     emit(this.root, 'ready', { pages: this.pages.length });
 
@@ -207,13 +209,22 @@ export class Viewer {
       });
     }
 
-    drawThread(this.threadNode, this.store.get(this.store.selectedId), {
+    const selected = this.store.get(this.store.selectedId);
+
+    drawThread(this.threadNode, selected, {
       readonly: this.config.readonly,
       maxLength: this.config.maxCommentLength,
+      suggestion: this.suggestion?.id === selected?.id ? this.suggestion : null,
       onResolve: (id, resolved) => this.resolve(id, resolved),
       onDelete: (id) => this.destroyAnnotation(id),
       onComment: (id, body, parentId) => this.comment(id, body, parentId),
       onDeleteComment: (id, commentId) => this.deleteComment(id, commentId),
+      onFind: (id) => this.findOrphan(id),
+      onAccept: () => this.acceptSuggestion(),
+      onDismiss: () => {
+        this.suggestion = null;
+        this.redrawAnnotations();
+      },
     });
 
     const orphans = this.store.orphans().length;
@@ -384,6 +395,149 @@ export class Viewer {
       this.pendingSelection = null;
 
       emit(this.root, 'annotation-created', created);
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  /**
+   * Move between the marks that still want attention, from the keyboard.
+   *
+   * A reviewer working through a forty-page contract should not be hunting for
+   * the next open comment with a scrollbar. `n` and `p` walk the open marks in
+   * page order, `r` settles the one in hand, and Escape puts the thread away.
+   *
+   * Bound to the viewer's own root rather than the document, so a page carrying
+   * two viewers, or a viewer beside a search box, never steals a keystroke that
+   * was meant for something else.
+   */
+  bindKeys() {
+    this.root.tabIndex = this.root.tabIndex < 0 ? 0 : this.root.tabIndex;
+
+    this.root.addEventListener('keydown', (event) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) {
+        return;
+      }
+
+      const typing = event.target instanceof HTMLElement
+        && ['INPUT', 'TEXTAREA'].includes(event.target.tagName);
+
+      if (typing) {
+        return;
+      }
+
+      const handlers = {
+        n: () => this.step(1),
+        p: () => this.step(-1),
+        j: () => this.step(1),
+        k: () => this.step(-1),
+        r: () => this.toggleResolved(),
+        Escape: () => this.store.select(null),
+      };
+
+      const handler = handlers[event.key];
+
+      if (handler) {
+        event.preventDefault();
+        handler();
+      }
+    });
+  }
+
+  /** The next mark wanting attention, in the order a reader meets them. */
+  step(direction) {
+    const open = this.store
+      .all()
+      .filter((annotation) => !annotation.resolved_at || annotation.orphaned)
+      .sort((a, b) => a.page - b.page || a.created_at.localeCompare(b.created_at));
+
+    if (open.length === 0) {
+      this.status('Nothing is open on this document.');
+
+      return;
+    }
+
+    const at = open.findIndex((annotation) => annotation.id === this.store.selectedId);
+    const next = open[(((at < 0 ? -1 : at) + direction) % open.length + open.length) % open.length];
+
+    this.store.select(next.id);
+    this.scrollTo(next);
+  }
+
+  scrollTo(annotation) {
+    const mark = this.root.querySelector(`[data-pindle-annotation="${annotation.id}"]`);
+
+    mark?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
+  toggleResolved() {
+    const annotation = this.store.get(this.store.selectedId);
+
+    if (annotation && !this.config.readonly) {
+      this.resolve(annotation.id, !annotation.resolved_at);
+    }
+  }
+
+  /**
+   * Look for an orphan's words in the document that replaced its own.
+   *
+   * Offered, never applied: the result goes into the thread panel as a
+   * suggestion with the page it was found on, and a person decides. Moving a
+   * reviewer's objection onto text an algorithm thought looked similar would be
+   * a worse failure than leaving it flagged.
+   */
+  async findOrphan(id) {
+    const annotation = this.store.get(id);
+
+    if (!annotation?.text_snippet) {
+      this.status('This mark recorded no text, so there is nothing to search for.');
+
+      return;
+    }
+
+    this.status('Looking for those words in this version…');
+
+    try {
+      const pages = [];
+
+      for (const page of this.pages) {
+        const runs = await this.engine.getPageTextRects(this.document, page).toPromise();
+
+        pages.push({ page: page.index + 1, size: page.size, runs });
+      }
+
+      const found = locate(pages, annotation.text_snippet);
+
+      if (!found) {
+        this.suggestion = null;
+        this.status('Those words are not in this version of the document.');
+        this.redrawAnnotations();
+
+        return;
+      }
+
+      this.suggestion = { id, ...found };
+      this.status('');
+      this.redrawAnnotations();
+    } catch (error) {
+      this.fail(error);
+    }
+  }
+
+  async acceptSuggestion() {
+    const suggestion = this.suggestion;
+
+    if (!suggestion) {
+      return;
+    }
+
+    try {
+      const moved = await this.api.reanchor(suggestion.id, suggestion.page, suggestion.rects);
+
+      this.suggestion = null;
+      this.store.put(moved);
+
+      emit(this.root, 'annotation-reanchored', moved);
     } catch (error) {
       this.fail(error);
     }

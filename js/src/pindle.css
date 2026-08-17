@@ -228,11 +228,78 @@
 }
 
 .pindle-thread__warning {
-  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
   border-radius: 4px;
   background: var(--pindle-warning-soft);
   color: var(--pindle-warning);
   font-size: 12px;
+}
+
+.pindle-thread__warning-text,
+.pindle-thread__found {
+  margin: 0;
+}
+
+.pindle-thread__found {
+  font-weight: 600;
+}
+
+.pindle-thread__find {
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 1px solid currentcolor;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pindle-thread__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* The review summary, shared by the Filament column and entry. */
+.pindle-review {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.pindle-review__badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.pindle-review__badge--open {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.pindle-review__badge--orphaned {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.pindle-review__badge--settled {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.pindle-review__badge--quiet {
+  background: transparent;
+  color: var(--pindle-muted, #71717a);
+  font-weight: 400;
 }
 
 .pindle-thread__list,

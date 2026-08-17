@@ -7,7 +7,7 @@
   "scripts": {
     "build": "node esbuild.config.js",
     "watch": "node esbuild.config.js --watch",
-    "test": "node --test js/test"
+    "test": "node --test \"js/test/*.test.js\""
   },
   "devDependencies": {
     "@embedpdf/core": "^2.15.0",

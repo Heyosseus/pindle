@@ -10,6 +10,7 @@ use Pindle\Documents\DocumentMap;
 use Pindle\Documents\PindleDocument;
 use Pindle\Models\Annotation;
 use Pindle\Pindle;
+use Pindle\Review\ReviewSummary;
 
 /**
  * Put this on the model the PDF belongs to.
@@ -77,5 +78,35 @@ trait HasAnnotations
     public function pindleDocumentKeys(): array
     {
         return array_keys(DocumentMap::for($this));
+    }
+
+    /**
+     * What state this document's review is in: how much is open, how much is
+     * settled, and how much no longer points at the right place.
+     *
+     * This is what makes storing annotations in your own database worth
+     * something. A badge on a table, a guard on an approval button, a nightly
+     * report -- all of them are this one call, and none of them needs the
+     * viewer to be on screen.
+     */
+    public function pindleReview(string $key = 'default'): ReviewSummary
+    {
+        return ReviewSummary::for($this, $key);
+    }
+
+    /**
+     * The review of every document this model carries, keyed by document.
+     *
+     * @return array<string, ReviewSummary>
+     */
+    public function pindleReviews(): array
+    {
+        $reviews = [];
+
+        foreach ($this->pindleDocumentKeys() as $key) {
+            $reviews[$key] = $this->pindleReview($key);
+        }
+
+        return $reviews;
     }
 }

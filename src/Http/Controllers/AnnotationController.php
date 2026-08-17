@@ -5,12 +5,15 @@ declare(strict_types=1);
 namespace Pindle\Http\Controllers;
 
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
 use Pindle\Contracts\DocumentResolver;
 use Pindle\Documents\PindleDocument;
+use Pindle\Events\AnnotationReanchored;
 use Pindle\Http\Concerns\ResolvesAnnotatable;
 use Pindle\Http\Concerns\RespondsWithJson;
 use Pindle\Http\Requests\DeleteAnnotationRequest;
 use Pindle\Http\Requests\ListAnnotationsRequest;
+use Pindle\Http\Requests\ReanchorAnnotationRequest;
 use Pindle\Http\Requests\StoreAnnotationRequest;
 use Pindle\Http\Requests\UpdateAnnotationRequest;
 use Pindle\Http\Resources\AnnotationResource;
@@ -115,9 +118,42 @@ final class AnnotationController
 
         $annotation->update($changes);
 
+        // Loaded rather than left off: a client that has just moved a mark
+        // redraws its thread from this response, and an absent relation would
+        // read as an emptied thread.
+        $annotation->refresh()->load('comments');
+
         return $this->json(
-            (new AnnotationResource($annotation->refresh(), $request->document()))->resolve($request),
+            (new AnnotationResource($annotation, $request->document()))->resolve($request),
         );
+    }
+
+    /**
+     * Move an orphaned mark onto the document that replaced the one it was
+     * drawn on, and re-hash it against those bytes.
+     *
+     * The hash comes from the document, never from the request -- the same rule
+     * as creation, and for the same reason: a client that could choose its own
+     * hash could declare any annotation current.
+     */
+    public function reanchor(ReanchorAnnotationRequest $request): JsonResponse
+    {
+        $annotation = $request->annotation();
+        $document = $request->document();
+
+        $previous = $annotation->document_hash;
+
+        $annotation->forceFill([
+            'page' => $request->integer('page'),
+            'rects' => $request->anchors(),
+            'document_hash' => $document?->hash() ?? $previous,
+        ])->save();
+
+        AnnotationReanchored::dispatch($annotation, $previous, Auth::user());
+
+        $annotation->refresh()->load('comments');
+
+        return $this->json((new AnnotationResource($annotation, $document))->resolve($request));
     }
 
     public function destroy(DeleteAnnotationRequest $request): Response

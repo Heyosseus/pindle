@@ -30,6 +30,12 @@ Route::post('annotations', [AnnotationController::class, 'store'])->name('pindle
 Route::patch('annotations/{annotation}', [AnnotationController::class, 'update'])->name('pindle.annotations.update');
 Route::delete('annotations/{annotation}', [AnnotationController::class, 'destroy'])->name('pindle.annotations.destroy');
 
+// Moving an orphan onto the document that replaced its own. Its own route
+// rather than a flag on the update, because it is the only request that
+// deliberately rewrites the hash an orphan is judged by.
+Route::post('annotations/{annotation}/reanchor', [AnnotationController::class, 'reanchor'])
+    ->name('pindle.annotations.reanchor');
+
 Route::post('annotations/{annotation}/comments', [CommentController::class, 'store'])->name('pindle.comments.store');
 Route::patch('comments/{comment}', [CommentController::class, 'update'])->name('pindle.comments.update');
 Route::delete('comments/{comment}', [CommentController::class, 'destroy'])->name('pindle.comments.destroy');
