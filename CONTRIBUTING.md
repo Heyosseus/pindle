@@ -49,6 +49,14 @@ a test rather than ship.
 `src/Filament` and `src/Livewire` may mention them; an arch test enforces it, and
 a CI leg runs the suite with neither installed.
 
+**The Laravel 11 legs.** Laravel 11 has left security support, so every `11.x`
+release now carries a Packagist advisory and Composer refuses to resolve one by
+default — which means Testbench 9 cannot be installed at all. Those two legs, and
+only those two, lift `policy.advisories.block` before installing. It is written
+into the CI checkout rather than into `composer.json`, so advisory blocking stays
+on for you, for the Laravel 12 and 13 legs, and for anybody who clones the repo.
+If Laravel 11 is ever dropped, delete the `eol-framework` flag with the legs.
+
 ## Style
 
 Match the code that is already there. In particular, comments explain *why*

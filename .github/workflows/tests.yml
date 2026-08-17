@@ -24,14 +24,20 @@ jobs:
         # each is pinned on a leg of its own: left to resolve freely, Composer
         # would take the newer every time and the older would go untested.
         include:
+          # Laravel 11 is past its security-support window, so every 11.x
+          # release now carries a Packagist advisory and Composer refuses to
+          # resolve one. See the install step for why these two legs lift that
+          # block and the others do not.
           - php: '8.3'
             laravel: '11.*'
             testbench: '9.*'
             filament: '^4.0'
+            eol-framework: true
           - php: '8.4'
             laravel: '11.*'
             testbench: '9.*'
             filament: '^5.0'
+            eol-framework: true
           - php: '8.3'
             laravel: '12.*'
             testbench: '10.*'
@@ -79,6 +85,22 @@ jobs:
 
       - name: Install dependencies
         run: |
+          # Composer blocks packages covered by a security advisory, which is
+          # the right default and stays on for every leg but the two below.
+          #
+          # Laravel 11 left security support in early 2026, so the whole 11.x
+          # line is now advisoried -- not for a specific bug this package could
+          # avoid, but for being end-of-life. Testbench 9 requires it, so with
+          # the block on there is no resolvable set at all and the leg cannot
+          # run. Applications still on Laravel 11 are exactly the ones that need
+          # a package to keep working, so the block is lifted here to prove it
+          # does. It is written into the checkout, never into what anyone
+          # installs: Composer reads `config` from the root package only.
+          if [ "${{ matrix.eol-framework }}" = "true" ]; then
+            jq '.config.policy.advisories.block = false' composer.json > composer.tmp
+            mv composer.tmp composer.json
+          fi
+
           composer require --dev \
             "orchestra/testbench:${{ matrix.testbench }}" \
             "filament/filament:${{ matrix.filament }}" \

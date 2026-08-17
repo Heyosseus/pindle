@@ -118,6 +118,12 @@ php artisan pindle:export "App\Models\Contract" 4471 --format=md
 Filament and Livewire are `suggest`, never `require`. A CI leg runs the whole
 suite with neither installed.
 
+Laravel 11 is tested on every commit and works, but it has left Laravel's own
+security-support window — so Composer may warn you about the framework, not
+about this package. Pindle keeps supporting it because applications still on 11
+are the ones a package should not abandon; upgrading the framework is the real
+fix, and nothing here stands in the way of it.
+
 ## Install
 
 ```bash
