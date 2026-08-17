@@ -7,6 +7,7 @@ namespace Pindle;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Override;
 use Pindle\Console\Commands\PruneCommand;
@@ -39,6 +40,8 @@ final class PindleServiceProvider extends ServiceProvider
             return;
         }
 
+        $this->registerRoutes();
+
         $this->registerSchedule();
 
         if ($this->app->runningInConsole()) {
@@ -52,6 +55,50 @@ final class PindleServiceProvider extends ServiceProvider
                 __DIR__.'/../database/migrations' => $this->app->databasePath('migrations'),
             ], 'pindle-migrations');
         }
+    }
+
+    /**
+     * The JSON API and the document stream, under the application's own stack.
+     *
+     * The middleware is whatever was configured and nothing more. Pindle does not
+     * append a guard of its own the way a dashboard package would, because every
+     * endpoint here already asks the application's policy about the model that
+     * owns the document -- an extra layer would be a second answer to a question
+     * that already has one.
+     */
+    private function registerRoutes(): void
+    {
+        $config = $this->app->make(Repository::class);
+
+        Route::group([
+            'domain' => $config->get('pindle.routes.domain'),
+            'prefix' => $config->get('pindle.routes.prefix', 'pindle'),
+            'middleware' => $this->middleware($config),
+        ], function (): void {
+            $this->loadRoutesFrom(__DIR__.'/../routes/pindle.php');
+        });
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function middleware(Repository $config): array
+    {
+        $configured = $config->get('pindle.routes.middleware', []);
+
+        if (! is_array($configured)) {
+            return [];
+        }
+
+        $stack = [];
+
+        foreach ($configured as $middleware) {
+            if (is_string($middleware)) {
+                $stack[] = $middleware;
+            }
+        }
+
+        return $stack;
     }
 
     /**

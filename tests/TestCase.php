@@ -49,6 +49,13 @@ abstract class TestCase extends Orchestra
         ]);
 
         $app['config']->set('pindle.documents.disk', 'documents');
+
+        // The shipped default is ['web', 'auth']; the suite drops 'auth' so that
+        // an unauthenticated request reaches the policy and is refused on its
+        // merits, rather than being redirected to a login route Testbench has no
+        // application to provide. That the default is the stricter pair is
+        // asserted in its own test.
+        $app['config']->set('pindle.routes.middleware', ['web']);
     }
 
     protected function defineDatabaseMigrations(): void

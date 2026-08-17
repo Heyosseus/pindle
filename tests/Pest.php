@@ -9,6 +9,7 @@ use Pindle\Models\Annotation;
 use Pindle\Models\Comment;
 use Pindle\Tests\DisabledTestCase;
 use Pindle\Tests\Fixtures\Invoice;
+use Pindle\Tests\MisconfiguredTestCase;
 use Pindle\Tests\ScheduledTestCase;
 use Pindle\Tests\TestCase;
 
@@ -20,6 +21,7 @@ uses(TestCase::class)->in('Feature', 'Unit');
  */
 uses(DisabledTestCase::class)->in('Disabled');
 uses(ScheduledTestCase::class)->in('Scheduled');
+uses(MisconfiguredTestCase::class)->in('Misconfigured');
 
 /**
  * A PDF on the fake disk, and an invoice pointing at it.
@@ -63,6 +65,35 @@ function annotate(
     ]);
 
     return $annotation;
+}
+
+/**
+ * The list endpoint's URL for one document of one model.
+ */
+function listUrl(Model $model, string $key = 'default'): string
+{
+    return route('pindle.annotations.index', [
+        'annotatable_type' => $model->getMorphClass(),
+        'annotatable_id' => (string) $model->getKey(),
+        'document_key' => $key,
+    ]);
+}
+
+/**
+ * A well-formed create payload, for tests that are about something else.
+ *
+ * @return array<string, mixed>
+ */
+function annotationPayload(Model $model, string $key = 'default'): array
+{
+    return [
+        'annotatable_type' => $model->getMorphClass(),
+        'annotatable_id' => (string) $model->getKey(),
+        'document_key' => $key,
+        'page' => 1,
+        'type' => 'highlight',
+        'rects' => [['x1' => 72.0, 'y1' => 640.2, 'x2' => 310.5, 'y2' => 655.8]],
+    ];
 }
 
 /**
