@@ -7,6 +7,7 @@ namespace Pindle;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Override;
@@ -42,6 +43,8 @@ final class PindleServiceProvider extends ServiceProvider
 
         $this->registerRoutes();
 
+        $this->registerViews();
+
         $this->registerSchedule();
 
         if ($this->app->runningInConsole()) {
@@ -54,7 +57,35 @@ final class PindleServiceProvider extends ServiceProvider
             $this->publishesMigrations([
                 __DIR__.'/../database/migrations' => $this->app->databasePath('migrations'),
             ], 'pindle-migrations');
+
+            // The compiled bundle, committed to the repository so that
+            // `composer require` is the whole install. No npm, no Vite config,
+            // no build step in the application.
+            $this->publishes([
+                __DIR__.'/../resources/dist' => $this->app->publicPath('vendor/pindle'),
+            ], 'pindle-assets');
+
+            $this->publishes([
+                __DIR__.'/../resources/views' => $this->app->resourcePath('views/vendor/pindle'),
+            ], 'pindle-views');
         }
+    }
+
+    /**
+     * The Blade component and the directive that loads the bundle.
+     *
+     * `@pindleScripts` emits the tags rather than leaving the application to
+     * remember two paths, and it emits them once however many times it is
+     * called -- a layout that includes it and a component that also does should
+     * not load PDFium twice.
+     */
+    private function registerViews(): void
+    {
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'pindle');
+
+        Blade::componentNamespace('Pindle\\View\\Components', 'pindle');
+
+        Blade::directive('pindleScripts', static fn (): string => "<?php echo \Pindle\Support\Assets::tags(); ?>");
     }
 
     /**

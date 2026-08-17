@@ -1,0 +1,18 @@
+{
+  "name": "pindle",
+  "private": true,
+  "description": "Build tooling for Pindle's viewer bundle. Maintainers only -- applications installing Pindle never run this.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.js",
+    "watch": "node esbuild.config.js --watch",
+    "test": "node --test js/test"
+  },
+  "devDependencies": {
+    "@embedpdf/core": "^2.15.0",
+    "@embedpdf/engines": "^2.15.0",
+    "@embedpdf/models": "^2.15.0",
+    "esbuild": "^0.25.0"
+  }
+}
