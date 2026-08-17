@@ -2,22 +2,37 @@
 
     python art/make_readme_art.py
 
-Every picture here is drawn through the *same* coordinate maths the package
-uses -- anchors are PDF user-space points with a bottom-left origin, converted
-to pixels at draw time and never persisted. That is deliberate: the README's
-central claim is that a highlight stays on its words through any zoom and any
-rotation, and art drawn by eye could show that claim being true while the code
-made it false. Here the pictures cannot disagree with the package, because they
-are produced by a transcription of it (see `to_viewport`, which is
-`js/src/coordinates.js` line for line).
+Design note, because the pictures are part of the argument rather than
+decoration around it.
+
+Pindle's world is document review: printed contracts, marginalia, highlighter
+ink, and -- the thing only this package adds -- a hash that fixes exactly which
+bytes a mark was made on. So the whole set is built on one confrontation:
+
+    the paper    warm, bright, set in a serif, genuinely readable
+    the evidence cold, monospaced, exact -- coordinates and a seal
+
+The paper is the loudest thing in every frame. That is the risk in this set and
+it is deliberate: most developer-tool art keeps everything uniformly dark and
+low-contrast, and a document viewer whose document is dim has its priorities the
+wrong way round.
+
+The recurring artifact is the **seal** -- the sha256, drawn like wax. Mint and
+whole while the document is the one a mark was made on, burnt orange and cracked
+once it is not. It appears in three of the four pictures and is absent from the
+fourth, which is about coordinates rather than bytes.
+
+Every anchor drawn anywhere here goes through `to_viewport`, a transcription of
+`js/src/coordinates.js`. The pictures cannot flatter the code, because they are
+drawn by it -- and `check_rotation` fails the build if the two ever part.
 
 Writes:
 
-    art/hero.png       the viewer, with marks, an orphan and a thread
-    art/demo.gif       a mark becomes a row you can query, and then the
-                       document is re-issued and the row says so
-    art/anchoring.png  why user-space points and not viewport pixels
-    art/orphan.png     what a replaced document does to the marks on it
+    art/hero.png       the viewer: marks on a real page, a thread beside them
+    art/demo.gif       a mark becomes a row you can query, then the contract is
+                       re-issued and the row says so
+    art/anchoring.png  one stored anchor, three renderings, all correct
+    art/orphan.png     the seal breaking, and what happens to the marks
 """
 
 from __future__ import annotations
@@ -28,25 +43,128 @@ from PIL import Image, ImageDraw, ImageFont
 
 ART = Path(__file__).parent
 
-# The same palette as the viewer's own stylesheet, so the README and the product
-# are recognisably one thing.
-PLATE_TOP = (14, 15, 18)
-PLATE_BOT = (21, 23, 28)
-CHROME = (24, 24, 27)
-SUNKEN = (39, 39, 42)
-LINE = (63, 63, 70)
-TEXT = (250, 250, 250)
-MUTED = (161, 161, 170)
-ACCENT = (37, 99, 235)
-ACCENT_SOFT = (59, 130, 246)
-MARK = (253, 224, 71)
-WARNING = (180, 83, 9)
-WARNING_TEXT = (245, 158, 11)
-PAPER = (255, 255, 255)
-INK = (203, 213, 225)
-INK_DARK = (148, 163, 184)
+# --------------------------------------------------------------------------
+# Tokens
+# --------------------------------------------------------------------------
 
-PAGE = (595.0, 842.0)  # A4, in points
+# A review desk under a lamp. The ground is graphite with a green cast rather
+# than a blue-slate or a near-black: it reads as a surface something is lying
+# on, which is what the paper needs to sit against.
+INK = (19, 21, 15)
+DESK = (29, 32, 26)
+RULE = (52, 58, 46)
+TEXT = (237, 239, 231)
+MUTED = (138, 145, 128)
+FAINT = (95, 102, 87)
+
+PAPER = (251, 250, 245)  # printed paper is warm; pure white is a screen
+PAPER_INK = (28, 30, 26)
+PAPER_FAINT = (214, 216, 205)
+
+MARKER = (242, 213, 68)  # highlighter ink, which leans green
+SEAL = (127, 212, 168)  # the hash matches
+BROKEN = (232, 133, 63)  # the hash does not
+
+# PDF pages are measured in points, and A4 is the shape everyone pictures.
+PAGE = (595.0, 842.0)
+
+# The PNGs are drawn at twice their display size so they stay crisp on the
+# screens developers actually read READMEs on. The GIF is not -- doubling every
+# frame would quadruple a file that has to load in a scroll.
+S = 2
+
+
+def u(value):
+    """A design-unit measurement in output pixels."""
+    return int(round(value * S))
+
+
+# --------------------------------------------------------------------------
+# Type
+#
+#   Georgia   the document. A contract is set in a serif, and the claim being
+#             made is that a mark stays on *these words* -- which needs words.
+#   Consolas  the evidence. Tabular figures are what let a reader see at a
+#             glance that one column of numbers never moves.
+#   Segoe UI  labels only, at ten points, uppercase, letterspaced. Deliberately
+#             the quietest voice in the set.
+# --------------------------------------------------------------------------
+
+FACES = {
+    "doc": ("georgia.ttf", "constantia.ttf", "times.ttf"),
+    "doc-bold": ("georgiab.ttf", "constantiab.ttf", "timesbd.ttf"),
+    "data": ("consola.ttf", "cour.ttf"),
+    "data-bold": ("consolab.ttf", "courbd.ttf"),
+    "ui": ("segoeui.ttf", "arial.ttf"),
+    "ui-bold": ("segoeuisb.ttf", "segoeuib.ttf", "arialbd.ttf"),
+}
+
+
+def face(kind, size):
+    for name in FACES[kind]:
+        try:
+            return ImageFont.truetype(name, max(1, int(size)))
+        except OSError:
+            continue
+
+    return ImageFont.load_default(max(1, int(size)))
+
+
+def tracked(draw, xy, text, f, fill, track):
+    """Letter-spaced text. Pillow has no tracking, and the labels need it."""
+    x, y = xy
+
+    for char in text:
+        draw.text((x, y), char, font=f, fill=fill)
+        x += f.getlength(char) + track
+
+    return x - track
+
+
+def label(draw, xy, text, fill=MUTED, size=10, scale=S):
+    """The one label style in the set: small, capitals, generously spaced."""
+    return tracked(draw, xy, text.upper(), face("ui-bold", size * scale), fill, 2.1 * scale)
+
+
+# --------------------------------------------------------------------------
+# The seal -- the signature artifact
+# --------------------------------------------------------------------------
+
+def seal(draw, xy, digest, intact=True, scale=S):
+    """The document hash, drawn as the wax seal it functionally is.
+
+    A sha256 of the bytes is what tells a mark whether the page underneath it is
+    still the page it was made on. Whole and mint while it matches; cracked and
+    burnt orange once it does not. Nothing else in the set uses these two
+    colours, so the state is legible before a single character is read.
+    """
+    x, y = xy
+    r = 6 * scale
+    colour = SEAL if intact else BROKEN
+    cx, cy = x + r + 3 * scale, y + r + 3 * scale
+
+    hair = max(1, int(1.4 * scale))
+    ring = r + 3 * scale
+
+    if intact:
+        # Pressed: a solid disc inside a hairline ring.
+        draw.ellipse([cx - ring, cy - ring, cx + ring, cy + ring], outline=colour, width=hair)
+        draw.ellipse([cx - r * 0.62, cy - r * 0.62, cx + r * 0.62, cy + r * 0.62], fill=colour)
+    else:
+        # Broken: the ring is still there, and the disc has cracked across it.
+        draw.ellipse([cx - ring, cy - ring, cx + ring, cy + ring], outline=colour, width=hair)
+        draw.line([(cx - ring * 0.78, cy + ring * 0.78), (cx + ring * 0.78, cy - ring * 0.78)], fill=colour, width=hair)
+
+    f = face("data", 13 * scale)
+    tx = cx + ring + 9 * scale
+
+    draw.text((tx, cy), digest, font=f, fill=colour if not intact else MUTED, anchor="lm")
+
+    if not intact:
+        width = f.getlength(digest)
+        draw.line([(tx, cy), (tx + width, cy)], fill=colour, width=max(1, int(scale)))
+
+    return tx + f.getlength(digest)
 
 
 # --------------------------------------------------------------------------
@@ -56,14 +174,13 @@ PAGE = (595.0, 842.0)  # A4, in points
 def to_viewport(anchor, page, turns, scale):
     """A stored anchor to the box to draw, at this rotation and zoom.
 
-    Bottom-left origin in points to top-left origin in pixels: the y flip
-    first, then the rotation, then the scale. Both corners are converted and
-    re-sorted, because a quarter turn swaps which corner is which.
+    Bottom-left origin in points to top-left origin in pixels: the y flip, then
+    the rotation, then the scale. Both corners are converted and re-sorted,
+    because a quarter turn swaps which corner is which.
     """
     w, h = page
     x1, y1, x2, y2 = anchor
 
-    # User space to page space: the flip.
     box = (min(x1, x2), h - max(y1, y2), max(x1, x2), h - min(y1, y2))
 
     def point(x, y):
@@ -81,405 +198,6 @@ def to_viewport(anchor, page, turns, scale):
     return (min(ax, bx), min(ay, by), max(ax, bx), max(ay, by))
 
 
-def viewport_size(page, turns, scale):
-    w, h = page[0] * scale, page[1] * scale
-
-    return (h, w) if turns % 2 else (w, h)
-
-
-# --------------------------------------------------------------------------
-# Canvas helpers
-# --------------------------------------------------------------------------
-
-# Three faces, each with a job.
-#
-#   Georgia   the document. A contract is set in a serif, and a page of grey
-#             bars proves nothing -- the whole claim is that the highlight stays
-#             on *these words*, which needs words to stay on.
-#   Consolas  the numbers. Tabular figures are what make "this column never
-#             moves" and "this one changes every frame" readable at a glance.
-#   Segoe UI  the chrome. Deliberately the quietest of the three.
-FACES = {
-    "doc": ("georgia.ttf", "constantia.ttf", "times.ttf"),
-    "doc-bold": ("georgiab.ttf", "constantiab.ttf", "timesbd.ttf"),
-    "data": ("consola.ttf", "cour.ttf"),
-    "data-bold": ("consolab.ttf", "courbd.ttf"),
-    "ui": ("segoeui.ttf", "arial.ttf"),
-    "ui-bold": ("segoeuisb.ttf", "segoeuib.ttf", "arialbd.ttf"),
-}
-
-
-def face(kind, size):
-    for name in FACES[kind]:
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-
-    return ImageFont.load_default(size)
-
-
-def font(size, bold=False):
-    return face("ui-bold" if bold else "ui", size)
-
-
-def tracked(draw, xy, text, f, fill, track=2.4):
-    """Letter-spaced text, for the small labels. Pillow has no tracking of its own."""
-    x, y = xy
-
-    for char in text:
-        draw.text((x, y), char, font=f, fill=fill)
-        x += f.getlength(char) + track
-
-    return x - track
-
-
-def plate(w, h):
-    """The dark gradient every picture sits on."""
-    column = Image.new("RGB", (1, h))
-    px = column.load()
-
-    for y in range(h):
-        t = y / max(1, h - 1)
-        px[0, y] = tuple(int(PLATE_TOP[i] + (PLATE_BOT[i] - PLATE_TOP[i]) * t) for i in range(3))
-
-    return column.resize((w, h))
-
-
-def hatched(draw, box, colour, step=7):
-    """Diagonal hatching -- how an orphaned mark is drawn in the viewer."""
-    left, top, right, bottom = (int(v) for v in box)
-    span = (right - left) + (bottom - top)
-
-    for offset in range(0, span, step):
-        draw.line(
-            [(left + offset, top), (left + offset - (bottom - top), bottom)],
-            fill=colour,
-            width=2,
-        )
-
-
-def clipped_hatch(size, box, colour):
-    """Hatching confined to one rectangle, as a pasteable layer."""
-    layer = Image.new("RGBA", size, (0, 0, 0, 0))
-    hatched(ImageDraw.Draw(layer), box, colour + (110,))
-
-    mask = Image.new("L", size, 0)
-    ImageDraw.Draw(mask).rectangle(box, fill=255)
-
-    out = Image.new("RGBA", size, (0, 0, 0, 0))
-    out.paste(layer, (0, 0), mask)
-
-    return out
-
-
-# --------------------------------------------------------------------------
-# The page: text lines and the anchors over them, all in user space
-# --------------------------------------------------------------------------
-
-# Lines of "text", as user-space rectangles. Bottom-left origin, so a larger y
-# is higher up the page.
-def text_lines():
-    lines = []
-    top = 770.0
-
-    for i in range(26):
-        y = top - i * 26.0
-
-        if i in (0,):
-            lines.append((72.0, y - 16, 300.0, y, True))
-            continue
-
-        if i in (6, 14, 21):
-            lines.append((72.0, y - 12, 250.0, y, True))
-            continue
-
-        width = 451.0 if i % 5 != 4 else 300.0
-        lines.append((72.0, y - 10, 72.0 + width, y, False))
-
-    return lines
-
-
-# The marks. A highlight spanning three lines is three anchors, exactly as the
-# package stores it.
-def line_anchor(index, right=523.0, pad=3.0):
-    """The anchor covering one line of the drawn text, with a little padding.
-
-    Derived from the same arithmetic that lays the lines out, so a mark cannot
-    drift off its words when the page changes.
-    """
-    y = 770.0 - index * 26.0
-
-    return (72.0, y - 10.0 - pad, right, y + pad)
-
-
-HIGHLIGHT = [line_anchor(3), line_anchor(4), line_anchor(5, right=331.0)]
-
-NOTE = [line_anchor(11)]
-
-ORPHAN = [line_anchor(18, right=420.0)]
-
-
-def draw_page(canvas, origin, turns, scale, marks=True, orphan=True, selected=0):
-    """One rendered page with its overlay, at the given rotation and zoom."""
-    width, height = viewport_size(PAGE, turns, scale)
-    ox, oy = origin
-
-    page = Image.new("RGB", (max(1, int(width)), max(1, int(height))), PAPER)
-    draw = ImageDraw.Draw(page)
-
-    for x1, y1, x2, y2, heavy in text_lines():
-        box = to_viewport((x1, y1, x2, y2), PAGE, turns, scale)
-        draw.rectangle(box, fill=INK_DARK if heavy else INK)
-
-    overlay = Image.new("RGBA", page.size, (0, 0, 0, 0))
-    over = ImageDraw.Draw(overlay)
-
-    if marks:
-        for index, anchor in enumerate(HIGHLIGHT):
-            box = to_viewport(anchor, PAGE, turns, scale)
-            over.rectangle(box, fill=MARK + (150,))
-
-            if selected == 0 and index == 0:
-                over.rectangle(box, outline=ACCENT + (255,), width=2)
-
-        for anchor in NOTE:
-            box = to_viewport(anchor, PAGE, turns, scale)
-            over.rectangle(box, fill=(134, 239, 172, 140))
-
-    if orphan:
-        for anchor in ORPHAN:
-            box = to_viewport(anchor, PAGE, turns, scale)
-            overlay.alpha_composite(clipped_hatch(page.size, box, WARNING))
-            over.rectangle(box, outline=WARNING + (255,), width=2)
-
-            # The badge rides the first rectangle only.
-            bx, by = box[2] - 9, box[1] - 9
-            over.ellipse([bx - 9, by - 9, bx + 9, by + 9], fill=WARNING + (255,))
-            over.text((bx, by), "!", fill=(255, 255, 255), font=font(13, True), anchor="mm")
-
-    page = Image.alpha_composite(page.convert("RGBA"), overlay).convert("RGB")
-
-    canvas.paste(page, (int(ox), int(oy)))
-    ImageDraw.Draw(canvas).rectangle(
-        [int(ox), int(oy), int(ox) + page.width - 1, int(oy) + page.height - 1],
-        outline=(63, 63, 70),
-    )
-
-    return page.size
-
-
-# --------------------------------------------------------------------------
-# hero.png
-# --------------------------------------------------------------------------
-
-def rotate_icon(draw, cx, cy, r=7, colour=MUTED):
-    """A clockwise arc with a head on it -- the rotate control."""
-    draw.arc([cx - r, cy - r, cx + r, cy + r], start=300, end=210, fill=colour, width=2)
-    draw.polygon(
-        [(cx + r - 4, cy - r + 1), (cx + r + 3, cy - r + 2), (cx + r - 1, cy - r + 7)],
-        fill=colour,
-    )
-
-
-def toolbar(draw, x, y, w, zoom="100%"):
-    draw.rectangle([x, y, x + w, y + 44], fill=SUNKEN)
-    draw.line([(x, y + 44), (x + w, y + 44)], fill=LINE)
-
-    cx = x + 14
-
-    for label, width in (("−", 30), (zoom, 46), ("+", 30)):
-        draw.rounded_rectangle([cx, y + 9, cx + width, y + 35], radius=4, outline=LINE)
-        draw.text((cx + width / 2, y + 22), label, fill=MUTED, font=font(14), anchor="mm")
-        cx += width + 8
-
-    # Drawn rather than typed: the rotate glyph is missing from the fonts this
-    # runs against, and a tofu box in the hero image is worse than an arc.
-    draw.rounded_rectangle([cx, y + 9, cx + 30, y + 35], radius=4, outline=LINE)
-    rotate_icon(draw, cx + 15, y + 22)
-    cx += 38
-
-    draw.rounded_rectangle([cx, y + 9, cx + 132, y + 35], radius=4, outline=ACCENT)
-    draw.text((cx + 66, y + 22), "Keep selection", fill=ACCENT_SOFT, font=font(13), anchor="mm")
-
-    draw.text(
-        (x + w - 16, y + 22),
-        "1 annotation may no longer point at the right place.",
-        fill=WARNING_TEXT,
-        font=font(13),
-        anchor="rm",
-    )
-
-
-def thread(draw, x, y, w, h):
-    draw.rectangle([x, y, x + w, y + h], fill=CHROME)
-    draw.line([(x, y), (x, y + h)], fill=LINE)
-
-    draw.text((x + 18, y + 24), "Page 1", fill=TEXT, font=font(14, True), anchor="lm")
-    draw.text((x + w - 18, y + 24), "Resolve", fill=ACCENT_SOFT, font=font(13), anchor="rm")
-
-    entries = [
-        ("Reviewer", "The payment terms here say thirty days, but the", "purchase order says sixty.", False),
-        ("Finance", "Confirmed — the PO is right. Revision B is on", "its way.", True),
-        ("Reviewer", "Thanks. Holding this open until it lands.", "", False),
-    ]
-
-    cy = y + 56
-
-    for who, first, second, reply in entries:
-        left = x + (34 if reply else 18)
-
-        if reply:
-            draw.line([(x + 24, cy - 4), (x + 24, cy + 46)], fill=LINE, width=2)
-
-        draw.text((left, cy), who, fill=TEXT, font=font(13, True))
-        draw.text((left, cy + 20), first, fill=MUTED, font=font(13))
-
-        if second:
-            draw.text((left, cy + 38), second, fill=MUTED, font=font(13))
-
-        cy += 78 if second else 60
-
-    box_top = y + h - 96
-    draw.rounded_rectangle([x + 18, box_top, x + w - 18, box_top + 52], radius=4, outline=LINE)
-    draw.text((x + 30, box_top + 16), "Add a comment", fill=(113, 113, 122), font=font(13))
-
-    draw.rounded_rectangle([x + 18, box_top + 62, x + 112, box_top + 88], radius=4, fill=ACCENT)
-    draw.text((x + 65, box_top + 75), "Add a comment", fill=(255, 255, 255), font=font(11), anchor="mm")
-
-
-def hero():
-    W, H = 1600, 900
-    canvas = plate(W, H)
-    draw = ImageDraw.Draw(canvas)
-
-    pad = 40
-    win = [pad, pad, W - pad, H - pad]
-
-    draw.rounded_rectangle(win, radius=10, fill=CHROME, outline=LINE)
-
-    inner_x, inner_y = pad + 1, pad + 1
-    inner_w = (W - pad) - inner_x
-
-    toolbar(draw, inner_x, inner_y, inner_w)
-
-    body_top = inner_y + 45
-    body_bottom = H - pad - 1
-    thread_w = 340
-
-    draw.rectangle([inner_x, body_top, W - pad - thread_w, body_bottom], fill=SUNKEN)
-
-    scale = 0.86
-    size = viewport_size(PAGE, 0, scale)
-    px = inner_x + ((W - pad - thread_w) - inner_x - size[0]) / 2
-    draw_page(canvas, (px, body_top + 18), 0, scale)
-
-    thread(draw, W - pad - thread_w, body_top, thread_w - 1, body_bottom - body_top)
-
-    canvas.save(ART / "hero.png")
-    print("wrote hero.png")
-
-
-# --------------------------------------------------------------------------
-# demo.gif -- the claim, moving
-# --------------------------------------------------------------------------
-
-# --------------------------------------------------------------------------
-# demo.gif -- the claim, moving
-#
-# The design brief for this one picture: a README reader gives it about four
-# seconds, and in those four seconds it has to make one argument -- that the
-# thing Pindle stores does not change, and everything else does.
-#
-# So the frame is split into two materials. On the left, the stored anchor, set
-# large in tabular figures against a solid rule: permanent. On the right, the
-# page it describes, put through every zoom and every quarter turn, with the
-# highlight welded to the same clause throughout. Underneath the stored numbers,
-# in the same face at half the size against a dashed rule, the pixels being
-# recomputed -- churning every frame, kept by nobody.
-#
-# Type scale carries the argument: what survives is set big, what is discarded
-# is set small. Nothing else in the frame is allowed to be loud.
-#
-# And the demonstration is not staged. The highlight in every frame is placed by
-# `to_viewport` -- the transcription of the package's own maths at the top of
-# this file -- over page pixels that were rotated by Pillow. The two agree only
-# if the maths is right, and `check_rotation` fails the build if they ever stop
-# agreeing. A README picture that would break when the code breaks is worth more
-# than one drawn to look correct.
-# --------------------------------------------------------------------------
-
-GROUND = (19, 23, 33)
-PANEL = (27, 33, 48)
-RULE = (44, 52, 70)
-STEEL = (127, 179, 200)
-PAPER_INK = (31, 39, 51)
-PAPER_FAINT = (110, 122, 140)
-HIGHLIGHTER = (255, 216, 77)
-
-CLAUSE = [
-    ("3.  Payment", True),
-    ("The Customer shall settle each invoice in full", False),
-    ("within thirty (30) days of the invoice date.", False),
-    ("Amounts outstanding after that period carry", False),
-    ("interest at four per cent above base rate.", False),
-]
-
-# Revision B of the same contract. One word changed, and it is the word the
-# highlight was drawn on -- which is the entire argument for storing a hash of
-# the bytes alongside every annotation.
-CLAUSE_REVISED = [
-    ("3.  Payment", True),
-    ("The Customer shall settle each invoice in full", False),
-    ("within sixty (60) days of the invoice date.", False),
-    ("Amounts outstanding after that period carry", False),
-    ("interest at four per cent above base rate.", False),
-]
-
-# The phrase the highlight covers, given as (line index, phrase). It runs across
-# two lines on purpose: a highlight over two lines is two rectangles, which is
-# how the package stores one.
-PHRASE = [(1, "in full", None), (2, "within thirty (30) days", None)]
-
-MARGIN = 64.0  # points
-FIRST_BASELINE = 742.0
-LEADING = 30.0
-BODY_PT = 17
-
-# The page is rasterised once at this multiple of its point size and then scaled
-# like the bitmap it is. Re-typesetting the text at each zoom instead would put
-# the glyphs wherever the hinter felt like at that pixel size, and the highlight
-# -- placed by arithmetic on the point positions -- would drift off the words by
-# a letter or two. Real PDF rendering has no such problem: glyph positions come
-# from the text matrix and are exactly linear in scale. Scaling one raster is
-# the faithful thing here, not the shortcut.
-REF = 2.0
-
-
-def clause_anchors():
-    """The phrase's anchors, in PDF points, measured once.
-
-    Measured once and then never again -- which is exactly what the package
-    does. Everything the animation draws afterwards is derived from these four
-    numbers per rectangle.
-    """
-    body = face("doc", round(BODY_PT * REF))
-    anchors = []
-
-    for index, prefix, _ in PHRASE:
-        text = CLAUSE[index][0]
-        start = text.index(prefix)
-
-        left = MARGIN + body.getlength(text[:start]) / REF
-        right = left + body.getlength(prefix) / REF
-        baseline = FIRST_BASELINE - index * LEADING
-
-        # A little padding above and below, the way a highlighter overshoots.
-        anchors.append((left - 2.0, baseline - 5.0, right + 2.0, baseline + BODY_PT - 1.0))
-
-    return anchors
-
-
 def rotate_box(box, w, h, turns):
     """Where a box lands when the image under it is turned a quarter at a time."""
     left, top, right, bottom = box
@@ -495,7 +213,7 @@ def rotate_box(box, w, h, turns):
 
 
 def check_rotation(anchors, scale):
-    """The formula against the pixels, at every rotation. Fails the build if they part."""
+    """The formula against the pixels. Fails the build if they part."""
     w, h = PAGE[0] * scale, PAGE[1] * scale
 
     for anchor in anchors:
@@ -513,279 +231,666 @@ def check_rotation(anchors, scale):
                     )
 
 
-_BASE = {}
+# --------------------------------------------------------------------------
+# The document
+# --------------------------------------------------------------------------
+
+MARGIN = 64.0
+BODY_PT = 16
+REF = 3.0  # the page is typeset once at this multiple and then scaled
+
+DOCUMENT = [
+    ("Contract of supply", "eyebrow"),
+    ("3.  Payment", "heading"),
+    ("The Customer shall settle each invoice in full", "body"),
+    ("within thirty (30) days of the invoice date.", "body"),
+    ("Amounts outstanding after that period carry", "body"),
+    ("interest at four per cent above base rate.", "body"),
+    ("4.  Delivery", "heading"),
+    ("Goods are delivered to the address stated on the", "body"),
+    ("order. Risk passes on delivery; title passes on", "body"),
+    ("payment in full.", "body"),
+    ("5.  Termination", "heading"),
+    ("Either party may terminate on ninety (90) days'", "body"),
+    ("written notice, or immediately on a material", "body"),
+    ("breach left unremedied for fourteen (14) days.", "body"),
+]
+
+# Revision B. One word changes, and it is a word a mark was made on -- which is
+# the entire argument for hashing the bytes.
+REVISED = dict(DOCUMENT)
+REVISION_B = [
+    (t.replace("thirty (30)", "sixty (60)"), k) for t, k in DOCUMENT
+]
 
 
-def base_page(revised=False):
-    """The upright page, typeset once per revision at the reference resolution."""
-    if revised in _BASE:
-        return _BASE[revised]
+def layout():
+    """Each line with the baseline it sits on, in points up from the page foot."""
+    y = 782.0
+    out = []
 
-    page = Image.new("RGB", (round(PAGE[0] * REF), round(PAGE[1] * REF)), PAPER)
-    draw = ImageDraw.Draw(page)
+    for text, kind in DOCUMENT:
+        if kind == "eyebrow":
+            out.append((text, kind, y))
+            y -= 46
+        elif kind == "heading":
+            y -= 8
+            out.append((text, kind, y))
+            y -= 28
+        else:
+            out.append((text, kind, y))
+            y -= 26
 
-    body = face("doc", round(BODY_PT * REF))
-    heavy = face("doc-bold", round(BODY_PT * REF))
-
-    for index, (text, is_heading) in enumerate(CLAUSE_REVISED if revised else CLAUSE):
-        baseline = FIRST_BASELINE - index * LEADING
-        draw.text(
-            (MARGIN * REF, (PAGE[1] - baseline - BODY_PT) * REF),
-            text,
-            font=heavy if is_heading else body,
-            fill=PAPER_INK,
-        )
-
-    # A few faint lines below, so the clause reads as part of a document rather
-    # than as five lines floating on white.
-    for index in range(len(CLAUSE) + 1, len(CLAUSE) + 14):
-        y = (PAGE[1] - (FIRST_BASELINE - index * LEADING)) * REF
-        right = MARGIN + (438.0 if index % 4 else 300.0)
-        draw.rectangle([MARGIN * REF, y, right * REF, y + 4.0 * REF], fill=(226, 232, 240))
-
-    _BASE[revised] = page
-
-    return page
+    return out
 
 
-def render_clause(scale, turns, anchors):
-    """The page, scaled and then turned, with the marks laid on after.
+LINES = layout()
 
-    The order matters and is the point: the words are rotated pixels, the
-    highlight is placed by the formula. They can only line up if the formula is
-    right.
+
+def phrase_anchor(index, phrase):
+    """The anchor covering a phrase on one line, measured once, in points.
+
+    Measured at the reference resolution and divided down, which is what the
+    package does too: the anchor is worked out once and everything afterwards is
+    derived from those four numbers.
     """
+    text, _, baseline = LINES[index]
+    body = face("doc", round(BODY_PT * REF))
+
+    start = text.index(phrase)
+    left = MARGIN + body.getlength(text[:start]) / REF
+    right = left + body.getlength(phrase) / REF
+
+    return (left - 2.0, baseline - 4.0, right + 2.0, baseline + BODY_PT - 1.0)
+
+
+# A highlight over two lines is two rectangles, which is how it is stored.
+HIGHLIGHT = [phrase_anchor(2, "in full"), phrase_anchor(3, "within thirty (30) days")]
+SETTLED = [phrase_anchor(8, "Risk passes on delivery")]
+
+_PAGES = {}
+
+
+def document(scale, revision="a"):
+    """The page as pixels: typeset once per revision, then scaled like a bitmap.
+
+    Re-typesetting at each zoom would put the glyphs wherever the hinter felt
+    like at that pixel size, and a highlight placed by arithmetic on the point
+    positions would drift off the words. Real PDF rendering has no such problem
+    -- glyph positions come from the text matrix and are exactly linear in scale
+    -- so scaling one raster is the faithful thing here, not the shortcut.
+    """
+    if revision not in _PAGES:
+        page = Image.new("RGB", (round(PAGE[0] * REF), round(PAGE[1] * REF)), PAPER)
+        draw = ImageDraw.Draw(page)
+
+        body = face("doc", round(BODY_PT * REF))
+        heavy = face("doc-bold", round(BODY_PT * REF))
+        lines = REVISION_B if revision == "b" else DOCUMENT
+
+        for (original, kind, baseline), (text, _) in zip(LINES, lines):
+            top = (PAGE[1] - baseline - BODY_PT) * REF
+
+            if kind == "eyebrow":
+                tracked(
+                    draw,
+                    (MARGIN * REF, top + 3 * REF),
+                    text.upper(),
+                    face("ui-bold", round(9 * REF)),
+                    (150, 152, 142),
+                    2.0 * REF,
+                )
+            else:
+                draw.text((MARGIN * REF, top), text, font=heavy if kind == "heading" else body, fill=PAPER_INK)
+
+        # Ruled lines below, so the page reads as a page and not as fourteen
+        # lines floating on white.
+        y = (PAGE[1] - 342.0) * REF
+        for row in range(11):
+            width = 467.0 if row % 4 else 320.0
+            draw.rectangle(
+                [MARGIN * REF, y, (MARGIN + width) * REF, y + 3.5 * REF],
+                fill=PAPER_FAINT,
+            )
+            y += 26 * REF
+
+        _PAGES[revision] = page
+
     width, height = round(PAGE[0] * scale), round(PAGE[1] * scale)
 
-    page = base_page().resize((width, height), Image.LANCZOS)
+    return _PAGES[revision].resize((width, height), Image.LANCZOS)
+
+
+def hatch(overlay, box, colour, step):
+    """Diagonal hatching inside one rectangle -- how an orphan is drawn."""
+    left, top, right, bottom = (int(v) for v in box)
+    layer = Image.new("RGBA", overlay.size, (0, 0, 0, 0))
+    pen = ImageDraw.Draw(layer)
+
+    for offset in range(0, (right - left) + (bottom - top), step):
+        pen.line([(left + offset, top), (left + offset - (bottom - top), bottom)], fill=colour + (170,), width=max(1, step // 4))
+
+    mask = Image.new("L", overlay.size, 0)
+    ImageDraw.Draw(mask).rectangle([left, top, right, bottom], fill=255)
+
+    overlay.paste(layer, (0, 0), mask)
+
+
+def marked(scale, turns, anchors, state, revision="a", others=()):
+    """A rendered page with its marks laid on after.
+
+    The order is the point: the words are scaled and rotated pixels, and the
+    marks are placed by the formula. They line up only if the formula is right.
+    """
+    page = document(scale, revision)
 
     if turns:
         page = page.rotate(-90 * turns, expand=True)
 
     overlay = Image.new("RGBA", page.size, (0, 0, 0, 0))
-    over = ImageDraw.Draw(overlay)
+    pen = ImageDraw.Draw(overlay)
 
-    boxes = [to_viewport(anchor, PAGE, turns, scale) for anchor in anchors]
+    for group, kind in others:
+        for anchor in group:
+            box = to_viewport(anchor, PAGE, turns, scale)
 
-    for box in boxes:
-        over.rectangle(box, fill=HIGHLIGHTER + (132,))
+            if kind == "settled":
+                pen.rectangle(box, fill=MARKER + (52,))
+                pen.line([(box[0], (box[1] + box[3]) / 2), (box[2], (box[1] + box[3]) / 2)], fill=(120, 128, 112, 190), width=max(1, int(scale * 1.2)))
 
-    page = Image.alpha_composite(page.convert("RGBA"), overlay).convert("RGB")
+    for index, anchor in enumerate(anchors):
+        box = to_viewport(anchor, PAGE, turns, scale)
 
-    return page, boxes
+        if state == "orphaned":
+            pen.rectangle(box, fill=BROKEN + (34,))
+            hatch(overlay, box, BROKEN, max(4, int(7 * scale)))
+            pen.rectangle(box, outline=BROKEN + (255,), width=max(1, int(1.4 * scale)))
+        else:
+            pen.rectangle(box, fill=MARKER + (150,))
 
+            if state == "selected" and index == 0:
+                pen.rectangle(box, outline=(40, 44, 34, 210), width=max(1, int(scale)))
+
+    return Image.alpha_composite(page.convert("RGBA"), overlay).convert("RGB")
+
+
+def window(size, scale, turns, anchors, state, revision="a", others=(), align="mark"):
+    """A fixed viewport onto the page, framed on the marks.
+
+    A viewer shows part of a page, not a whole one shrunk to fit. Which part
+    depends on what the picture is arguing:
+
+    `mark` centres on the rectangles, which is what lets three windows at three
+    zooms and rotations show the same clause. `left` keeps the page's own left
+    margin in view and only centres vertically -- so a reader sees lines
+    beginning where lines begin, rather than a column of words sliced mid-
+    syllable, which is what two pages being compared need.
+    """
+    page = marked(scale, turns, anchors, state, revision, others)
+    boxes = [to_viewport(a, PAGE, turns, scale) for a in anchors]
+
+    cx = (min(b[0] for b in boxes) + max(b[2] for b in boxes)) / 2
+    cy = (min(b[1] for b in boxes) + max(b[3] for b in boxes)) / 2
+
+    offset_x = -MARGIN * scale + 14 if align == "left" else size[0] / 2 - cx
+
+    view = Image.new("RGB", size, PAPER)
+    view.paste(page, (int(offset_x), int(size[1] / 2 - cy)))
+
+    return view
+
+
+def frame(canvas, box, radius=0):
+    """A desk-coloured panel with a hairline. The only container in the set."""
+    ImageDraw.Draw(canvas).rounded_rectangle(box, radius=radius, fill=DESK, outline=RULE)
+
+
+def caption(draw, y, text, width):
+    """The one plain sentence under each picture."""
+    draw.line([(u(28), y), (width - u(28), y)], fill=RULE)
+    draw.text((u(28), y + u(14)), text, font=face("ui", 14 * S), fill=MUTED)
+
+
+def eyebrow(draw, title, note, width):
+    label(draw, (u(28), u(26)), "Pindle", TEXT, 11)
+    draw.text((u(28), u(48)), title, font=face("ui-bold", 21 * S), fill=TEXT)
+
+    if note:
+        draw.text((width - u(28), u(30)), note, font=face("ui", 14 * S), fill=FAINT, anchor="ra")
+
+
+# --------------------------------------------------------------------------
+# hero.png -- the viewer
+# --------------------------------------------------------------------------
+
+def rotate_icon(draw, cx, cy, r, colour):
+    draw.arc([cx - r, cy - r, cx + r, cy + r], start=300, end=210, fill=colour, width=max(1, int(1.6 * S)))
+    draw.polygon(
+        [(cx + r - 2 * S, cy - r), (cx + r + 2 * S, cy - r + S), (cx + r - S, cy - r + 4 * S)],
+        fill=colour,
+    )
+
+
+def hero():
+    W, H = u(890), u(566)
+    canvas = Image.new("RGB", (W, H), INK)
+    draw = ImageDraw.Draw(canvas)
+
+    eyebrow(draw, "A document review, inside your admin panel", "heyosseus/pindle", W)
+
+    win = [u(28), u(86), W - u(28), u(500)]
+    frame(canvas, win, radius=u(8))
+
+    # -- toolbar -------------------------------------------------------
+    bar_h = u(40)
+    draw.rectangle([win[0] + 1, win[1] + 1, win[2] - 1, win[1] + bar_h], fill=(35, 39, 31))
+    draw.line([(win[0], win[1] + bar_h), (win[2], win[1] + bar_h)], fill=RULE)
+
+    cx = win[0] + u(14)
+    mid = win[1] + bar_h / 2
+
+    for text, w in (("−", u(26)), ("100%", u(42)), ("+", u(26))):
+        draw.rounded_rectangle([cx, mid - u(11), cx + w, mid + u(11)], radius=u(3), outline=RULE)
+        draw.text((cx + w / 2, mid), text, font=face("ui", 13 * S), fill=MUTED, anchor="mm")
+        cx += w + u(6)
+
+    draw.rounded_rectangle([cx, mid - u(11), cx + u(26), mid + u(11)], radius=u(3), outline=RULE)
+    rotate_icon(draw, cx + u(13), mid, u(6), MUTED)
+    cx += u(38)
+
+    draw.rounded_rectangle([cx, mid - u(11), cx + u(112), mid + u(11)], radius=u(3), fill=(45, 51, 39), outline=RULE)
+    draw.text((cx + u(56), mid), "Keep selection", font=face("ui", 13 * S), fill=TEXT, anchor="mm")
+
+    # The seal sits in the toolbar, where a reviewer can see at a glance that
+    # the page in front of them is the page the marks were made on.
+    seal(draw, (win[2] - u(190), mid - u(7)), "sha256 4f3a9c21", intact=True)
+
+    # -- the page ------------------------------------------------------
+    body_top = win[1] + bar_h + 1
+    body_bottom = win[3] - 1
+    thread_w = u(258)
+    page_right = win[2] - thread_w
+
+    draw.rectangle([win[0] + 1, body_top, page_right, body_bottom], fill=(24, 27, 21))
+
+    scale = 0.74 * S
+    page = marked(scale, 0, HIGHLIGHT, "selected", others=[(SETTLED, "settled")])
+
+    px = int(win[0] + 1 + ((page_right - win[0]) - page.width) / 2)
+    py = int(body_top + u(16))
+    visible = page.crop((0, 0, page.width, min(page.height, body_bottom - py)))
+
+    canvas.paste(visible, (px, py))
+    draw.rectangle([px, py, px + visible.width - 1, py + visible.height - 1], outline=(60, 66, 54))
+
+    # -- the thread ----------------------------------------------------
+    tx = page_right + 1
+    draw.rectangle([tx, body_top, win[2] - 1, body_bottom], fill=DESK)
+    draw.line([(tx, body_top), (tx, body_bottom)], fill=RULE)
+
+    inner = tx + u(18)
+    y = body_top + u(18)
+
+    draw.text((inner, y), "Page 1", font=face("ui-bold", 14 * S), fill=TEXT)
+    draw.text((win[2] - u(18), y), "Resolve", font=face("ui", 13 * S), fill=TEXT, anchor="ra")
+
+    y += u(30)
+    label(draw, (inner, y), "Highlight · open")
+
+    y += u(26)
+
+    thread = [
+        ("Reviewer", ["The payment terms say thirty days,", "but the purchase order says sixty."], False),
+        ("Finance", ["Confirmed — the order is right.", "Revision B is on its way."], True),
+    ]
+
+    for who, body, reply in thread:
+        left = inner + (u(14) if reply else 0)
+
+        if reply:
+            draw.line([(inner + u(4), y - u(2)), (inner + u(4), y + u(46))], fill=RULE, width=max(1, int(1.5 * S)))
+
+        draw.text((left, y), who, font=face("ui-bold", 13 * S), fill=TEXT)
+        y += u(19)
+
+        for line in body:
+            draw.text((left, y), line, font=face("ui", 13 * S), fill=MUTED)
+            y += u(18)
+
+        y += u(12)
+
+    # An empty box with a caret rather than placeholder text: the button below
+    # already says what the box is for, and a hero image is not the place to
+    # print the same four words twice.
+    box_top = body_bottom - u(74)
+    draw.rounded_rectangle([inner, box_top, win[2] - u(18), box_top + u(40)], radius=u(4), outline=RULE)
+    draw.line([(inner + u(11), box_top + u(11)), (inner + u(11), box_top + u(27))], fill=MUTED, width=max(1, int(1.4 * S)))
+
+    # Paper-coloured, not mint. Mint means one thing in this set -- the seal is
+    # intact -- and a button borrowing it would make the signature ambiguous.
+    draw.rounded_rectangle([inner, box_top + u(48), inner + u(94), box_top + u(70)], radius=u(4), fill=PAPER)
+    draw.text((inner + u(47), box_top + u(59)), "Add comment", font=face("ui-bold", 11 * S), fill=(24, 27, 21), anchor="mm")
+
+    caption(
+        draw,
+        u(524),
+        "Highlight, resolve, discuss. Nothing is ever written back into the PDF.",
+        W,
+    )
+
+    canvas.save(ART / "hero.png")
+    print("wrote hero.png")
+
+
+# --------------------------------------------------------------------------
+# anchoring.png -- one anchor, three renderings
+# --------------------------------------------------------------------------
+
+def anchoring():
+    W, H = u(890), u(470)
+    canvas = Image.new("RGB", (W, H), INK)
+    draw = ImageDraw.Draw(canvas)
+
+    eyebrow(draw, "One anchor, stored once, redrawn every time", "js/test/coordinates.test.js", W)
+
+    # One anchor, not the pair. The card prints its four numbers and the
+    # windows show that same rectangle three ways -- if the card described one
+    # mark and the eye followed another, the picture would prove nothing.
+    only = [HIGHLIGHT[1]]
+
+    card = [u(28), u(100), u(286), u(400)]
+    frame(canvas, card, radius=u(8))
+
+    label(draw, (card[0] + u(20), card[1] + u(20)), "Stored", SEAL)
+    draw.text(
+        (card[0] + u(20), card[1] + u(40)),
+        "PDF points · bottom-left origin",
+        font=face("ui", 13 * S),
+        fill=FAINT,
+    )
+
+    anchor = only[0]
+    for row, (name, value) in enumerate(zip(("x1", "y1", "x2", "y2"), anchor)):
+        y = card[1] + u(74) + row * u(34)
+        draw.text((card[0] + u(20), y + u(8)), name, font=face("data", 13 * S), fill=FAINT)
+        draw.text((card[0] + u(52), y), f"{value:7.2f}", font=face("data-bold", 25 * S), fill=TEXT)
+
+    draw.text(
+        (card[0] + u(20), card[3] - u(38)),
+        "Nothing about a screen is kept here.",
+        font=face("ui", 13 * S),
+        fill=MUTED,
+    )
+
+    # Three windows, one per rendering. Same four numbers into all of them.
+    views = [(1.00, 0), (1.50, 1), (0.60, 2)]
+    size = (u(172), u(250))
+    gap = u(20)
+    start = u(318)
+    y = u(112)
+
+    for scale, _ in views:
+        check_rotation(only, scale * S)
+
+    # A single hairline running out of the card and straight through all three
+    # windows at the height of the mark. Drawn first, so it shows only in the
+    # gaps: the same anchor passing through three renderings, rather than three
+    # separate arrows implying three separate things.
+    through = y + size[1] // 2
+    draw.line([(card[2], through), (W - u(28), through)], fill=RULE, width=max(1, int(1.5 * S)))
+
+    for index, (scale, turns) in enumerate(views):
+        x = start + index * (size[0] + gap)
+
+        canvas.paste(window(size, scale * S, turns, only, "open"), (x, y))
+        draw.rectangle([x, y, x + size[0] - 1, y + size[1] - 1], outline=RULE)
+
+        draw.text(
+            (x, y + size[1] + u(14)),
+            f"{scale * 100:.0f}%  ·  {turns * 90}°",
+            font=face("data", 13 * S),
+            fill=MUTED,
+        )
+
+    caption(
+        draw,
+        u(424),
+        "Same clause, same four numbers. Store viewport pixels instead and the mark moves the "
+        "first time anybody zooms.",
+        W,
+    )
+
+    canvas.save(ART / "anchoring.png")
+    print("wrote anchoring.png")
+
+
+# --------------------------------------------------------------------------
+# orphan.png -- the seal breaking
+# --------------------------------------------------------------------------
+
+def record_panel(canvas, box, orphaned):
+    """The annotation as a row, in the same language the GIF uses."""
+    draw = ImageDraw.Draw(canvas)
+    frame(canvas, box, radius=u(8))
+
+    x = box[0] + u(20)
+    value_x = box[0] + u(136)
+
+    label(draw, (x, box[1] + u(18)), "Annotation", SEAL)
+    draw.text((box[2] - u(20), box[1] + u(18)), "01JQ8F7K2M…", font=face("data", 12 * S), fill=FAINT, anchor="ra")
+    draw.line([(box[0] + 1, box[1] + u(44)), (box[2] - 1, box[1] + u(44))], fill=RULE)
+
+    rows = [
+        ("annotatable", "Invoice #4471", TEXT),
+        ("page", "1", TEXT),
+        ("type", "highlight", TEXT),
+        ("rects", "2 rectangles", TEXT),
+        ("document_hash", "9c17be04…" if orphaned else "4f3a9c21…", BROKEN if orphaned else TEXT),
+        ("orphaned", "true" if orphaned else "false", BROKEN if orphaned else MUTED),
+    ]
+
+    y = box[1] + u(60)
+
+    for name, value, colour in rows:
+        draw.text((x, y), name, font=face("data", 13 * S), fill=FAINT)
+        draw.text((value_x, y), value, font=face("data-bold" if colour is BROKEN else "data", 13 * S), fill=colour)
+        y += u(24)
+
+
+def orphan():
+    W, H = u(890), u(440)
+    canvas = Image.new("RGB", (W, H), INK)
+    draw = ImageDraw.Draw(canvas)
+
+    eyebrow(draw, "When the contract is re-issued", "one word changed", W)
+
+    size = (u(230), u(196))
+    y = u(104)
+
+    panels = [
+        (u(28), "a", "open", "sha256 4f3a9c21", True, "Revision A", "The mark was made here."),
+        (u(288), "b", "orphaned", "sha256 9c17be04", False, "Revision B", "Thirty days became sixty."),
+    ]
+
+    for x, revision, state, digest, intact, name, note in panels:
+        canvas.paste(window(size, 0.78 * S, 0, HIGHLIGHT, state, revision, align="left"), (x, y))
+        draw.rectangle([x, y, x + size[0] - 1, y + size[1] - 1], outline=RULE)
+
+        label(draw, (x, y + size[1] + u(16)), name, TEXT)
+        seal(draw, (x, y + size[1] + u(36)), digest, intact)
+        draw.text((x, y + size[1] + u(64)), note, font=face("ui", 13 * S), fill=MUTED)
+
+    record_panel(canvas, [u(548), y, W - u(28), y + u(196)], orphaned=True)
+
+    caption(
+        draw,
+        u(396),
+        "The seal is a sha256 of the bytes. When it breaks, every mark on the page is flagged — "
+        "and Pindle offers to go and find the words again.",
+        W,
+    )
+
+    canvas.save(ART / "orphan.png")
+    print("wrote orphan.png")
+
+
+# --------------------------------------------------------------------------
+# demo.gif -- a mark becomes a row, and then the contract is re-issued
+#
+# Zoom and rotation are deliberately not in this picture. Every PDF viewer
+# zooms; nobody installs a package for it. What Pindle does that a viewer does
+# not is put the mark in your database, under your policies, where you can ask
+# it questions -- and tell you when the page underneath it has been replaced.
+# --------------------------------------------------------------------------
 
 def ease(t):
-    """Ease in and out, so a movement reads as a gesture rather than a slider."""
     return t * t * (3 - 2 * t)
 
 
-AMBER = (245, 158, 11)
-AMBER_DIM = (146, 96, 16)
-VALUE = (222, 229, 240)
-LABEL = (110, 122, 142)
-
-
 def demo():
-    """The round trip: a mark on a page becomes a row you can query.
-
-    Zoom and rotation are not in this picture, and that is the point. Every PDF
-    viewer zooms; nobody installs a package for it. What Pindle does that a
-    viewer does not is put the mark in *your* database, under *your* policies,
-    where you can ask it questions -- and tell you when the document underneath
-    it has been replaced.
-
-    So the frame is a page on the left and the row it produced on the right, and
-    the story runs: draw it, it is a record, query it, discuss it, and then
-    somebody re-issues the contract and the record says so. The last beat is the
-    one nothing else does: the highlight is still exactly where it was put, and
-    the words underneath it now say sixty days instead of thirty.
-    """
-    W, H = 900, 480
-    PAD = 30
-    PAGE_W = 400
-    REC_X = PAD + PAGE_W + 26
+    W, H = 900, 470
+    PAD = 28
+    PAGE_W = 372
+    REC_X = PAD + PAGE_W + 24
     REC_W = W - PAD - REC_X
-    TOP = 66
-    BOTTOM = H - PAD
+    TOP = 62
+    BOTTOM = H - PAD - 26
 
-    anchors = clause_anchors()
-
-    for scale in (0.62, 1.0, 1.4):
-        check_rotation(anchors, scale)
-
-    small = face("data", 12)
     mono = face("data", 12)
     mono_bold = face("data-bold", 12)
-    tag = face("ui-bold", 10)
-    caption = face("ui", 12)
+    ui = face("ui", 12)
 
     rows = [
         ("annotatable", "Invoice #4471"),
         ("document_key", "default"),
         ("page", "1"),
         ("type", "highlight"),
-    ]
-
-    def rect_lines():
-        out = [("rects", f"{len(anchors)} rectangles, PDF points")]
-
-        for anchor in anchors:
-            out.append(("", "x1 {:6.2f}  y1 {:6.2f}  x2 {:6.2f}  y2 {:6.2f}".format(*anchor)))
-
-        return out
-
-    body_rows = rows + rect_lines()
+        ("rects", "2 rectangles, PDF points"),
+    ] + [("", "x1 {:6.2f}  y1 {:6.2f}  x2 {:6.2f}  y2 {:6.2f}".format(*a)) for a in HIGHLIGHT]
 
     def render(state):
-        canvas = Image.new("RGB", (W, H), GROUND)
+        canvas = Image.new("RGB", (W, H), INK)
         draw = ImageDraw.Draw(canvas)
 
-        # -- eyebrow -------------------------------------------------------
-        tracked(draw, (PAD, 24), "PINDLE", face("ui-bold", 13), (233, 237, 245), 3.4)
-        draw.text(
-            (W - PAD, 26),
-            "annotations that live in your database",
-            font=caption,
-            fill=LABEL,
-            anchor="ra",
-        )
+        label(draw, (PAD, 22), "Pindle", TEXT, 11, scale=1)
+        draw.text((W - PAD, 22), "annotations that live in your database", font=ui, fill=FAINT, anchor="ra")
 
-        # -- the page ------------------------------------------------------
-        draw.rectangle([PAD, TOP, PAD + PAGE_W, BOTTOM], fill=PANEL, outline=RULE)
+        # -- the page --------------------------------------------------
+        draw.rectangle([PAD, TOP, PAD + PAGE_W, BOTTOM], fill=DESK, outline=RULE)
 
-        page = base_page(state["revised"]).resize(
-            (round(PAGE[0]), round(PAGE[1])), Image.LANCZOS
-        )
+        zoom = 0.72
+        offset = (-MARGIN * zoom + 14, -26)
 
-        window = Image.new("RGB", (PAGE_W - 2, BOTTOM - TOP - 2), (238, 241, 246))
-        window.paste(page, (int((PAGE_W - 2) / 2 - 254), -46))
+        page = marked(zoom, 0, HIGHLIGHT if state["mark"] > 0 else [],
+                      "orphaned" if state["orphaned"] else "open",
+                      "b" if state["revised"] else "a")
 
-        over = ImageDraw.Draw(window, "RGBA")
+        view = Image.new("RGB", (PAGE_W - 2, BOTTOM - TOP - 2), PAPER)
+        view.paste(page, (int(offset[0]), int(offset[1])))
 
-        for anchor in anchors:
-            left, top, right, bottom = to_viewport(anchor, PAGE, 0, 1.0)
-            left += (PAGE_W - 2) / 2 - 254
-            right += (PAGE_W - 2) / 2 - 254
-            top -= 46
-            bottom -= 46
+        # The mark sweeps on rather than appearing, so a reader watches it being
+        # drawn instead of wondering what changed. Painting paper back over the
+        # unswept remainder is cheaper than re-rendering the page per frame.
+        if 0 < state["mark"] < 1:
+            cover = ImageDraw.Draw(view)
 
-            # The mark sweeps on rather than appearing, so a reader sees it being
-            # drawn rather than wondering what changed.
-            right = left + (right - left) * state["mark"]
+            for anchor in HIGHLIGHT:
+                box = to_viewport(anchor, PAGE, 0, zoom)
+                left = box[0] + offset[0]
 
-            if state["mark"] <= 0:
-                continue
+                cover.rectangle(
+                    [left + (box[2] - box[0]) * state["mark"], box[1] + offset[1],
+                     left + (box[2] - box[0]), box[3] + offset[1]],
+                    fill=PAPER,
+                )
 
-            if state["orphaned"]:
-                over.rectangle([left, top, right, bottom], fill=WARNING + (60,))
-                hatched(over, (left, top, right, bottom), WARNING + (150,), step=6)
-                over.rectangle([left, top, right, bottom], outline=AMBER + (255,))
-            else:
-                over.rectangle([left, top, right, bottom], fill=HIGHLIGHTER + (140,))
-
-        canvas.paste(window, (PAD + 1, TOP + 1))
+        canvas.paste(view, (PAD + 1, TOP + 1))
 
         if state["revised"]:
-            pill = "revision B uploaded"
-            width = caption.getlength(pill) + 20
-            px, py = PAD + PAGE_W - width - 12, TOP + 12
+            text = "Revision B uploaded"
+            width = ui.getlength(text) + 18
+            draw.rounded_rectangle([PAD + PAGE_W - width - 10, TOP + 10, PAD + PAGE_W - 10, TOP + 30], radius=10, fill=(74, 42, 18))
+            draw.text((PAD + PAGE_W - width / 2 - 10, TOP + 20), text, font=ui, fill=BROKEN, anchor="mm")
 
-            draw.rounded_rectangle([px, py, px + width, py + 22], radius=11, fill=AMBER_DIM)
-            draw.text((px + width / 2, py + 11), pill, font=caption, fill=(255, 244, 214), anchor="mm")
+        # -- the record ------------------------------------------------
+        draw.rectangle([REC_X, TOP, REC_X + REC_W, BOTTOM], fill=DESK, outline=RULE)
 
-        # -- the record ----------------------------------------------------
-        draw.rectangle([REC_X, TOP, REC_X + REC_W, BOTTOM], fill=PANEL, outline=RULE)
+        x = REC_X + 16
+        value_x = REC_X + 120
 
-        x = REC_X + 18
-        value_x = REC_X + 128
+        label(draw, (x, TOP + 14), "Annotation", SEAL, 10, scale=1)
+        draw.text((REC_X + REC_W - 16, TOP + 14), "01JQ8F7K2M…", font=mono, fill=FAINT, anchor="ra")
+        draw.line([(REC_X + 1, TOP + 38), (REC_X + REC_W - 1, TOP + 38)], fill=RULE)
 
-        tracked(draw, (x, TOP + 16), "ANNOTATION", tag, STEEL, 2.2)
-        draw.text((REC_X + REC_W - 18, TOP + 16), "01JQ8F7K2M…", font=small, fill=LABEL, anchor="ra")
-        draw.line([(REC_X + 1, TOP + 42), (REC_X + REC_W - 1, TOP + 42)], fill=RULE)
+        y = TOP + 50
 
-        y = TOP + 56
-
-        for index, (label, value) in enumerate(body_rows):
+        for index, (name, value) in enumerate(rows):
             if index >= state["rows"]:
                 break
 
-            if label:
-                draw.text((x, y), label, font=mono, fill=LABEL)
+            if name:
+                draw.text((x, y), name, font=mono, fill=FAINT)
 
-            draw.text((value_x if label else x + 20, y), value, font=mono, fill=VALUE)
-            y += 19
+            draw.text((value_x if name else x + 16, y), value, font=mono, fill=TEXT)
+            y += 17
 
-        if state["rows"] >= len(body_rows):
-            colour = AMBER if state["orphaned"] else VALUE
-            draw.text((x, y), "document_hash", font=mono, fill=LABEL)
-            draw.text((value_x, y), "9c17be04…" if state["orphaned"] else "4f3a9c21…", font=mono_bold, fill=colour)
-            y += 19
+        if state["rows"] > len(rows):
+            seal(draw, (x, y - 3), "9c17be04…" if state["orphaned"] else "4f3a9c21…", not state["orphaned"], scale=1)
+            y += 22
 
         if state["orphaned"]:
-            draw.text((x, y), "orphaned", font=mono, fill=LABEL)
-            draw.text((value_x, y), "true", font=mono_bold, fill=AMBER)
-            y += 19
+            draw.text((x, y), "orphaned", font=mono, fill=FAINT)
+            draw.text((value_x, y), "true", font=mono_bold, fill=BROKEN)
+            y += 20
 
-        # -- the thread ----------------------------------------------------
         if state["comments"]:
-            draw.line([(REC_X + 1, y + 8), (REC_X + REC_W - 1, y + 8)], fill=RULE)
-            tracked(draw, (x, y + 22), "COMMENTS", tag, LABEL, 2.2)
+            draw.line([(REC_X + 1, y + 6), (REC_X + REC_W - 1, y + 6)], fill=RULE)
+            label(draw, (x, y + 18), "Comments", MUTED, 10, scale=1)
+            draw.text((x, y + 38), "Reviewer", font=mono_bold, fill=TEXT)
+            draw.text((x + 68, y + 38), "The order says sixty days —", font=mono, fill=MUTED)
+            draw.text((x + 68, y + 54), "which is right?", font=mono, fill=MUTED)
+            y += 76
 
-            draw.text((x, y + 44), "Reviewer", font=mono_bold, fill=VALUE)
-            draw.text((x + 74, y + 44), "The PO says sixty days —", font=mono, fill=(168, 180, 198))
-            draw.text((x + 74, y + 62), "which is right?", font=mono, fill=(168, 180, 198))
-
-            y += 84
-
-        # -- the query -----------------------------------------------------
         if state["query"]:
-            qy = BOTTOM - 58
+            qy = BOTTOM - 50
+            draw.line([(REC_X + 1, qy - 12), (REC_X + REC_W - 1, qy - 12)], fill=RULE)
+            draw.text((x, qy), "$invoice->annotations()", font=mono, fill=SEAL)
+            draw.text((x, qy + 16), "        ->unresolved()->count()", font=mono, fill=SEAL)
+            draw.text((REC_X + REC_W - 16, qy + 10), "1", font=face("data-bold", 20), fill=TEXT, anchor="rm")
 
-            draw.line([(REC_X + 1, qy - 14), (REC_X + REC_W - 1, qy - 14)], fill=RULE)
-            draw.text((x, qy), "$invoice->annotations()", font=mono, fill=STEEL)
-            draw.text((x, qy + 18), "        ->unresolved()->count()", font=mono, fill=STEEL)
-            draw.text((REC_X + REC_W - 18, qy + 9), "1", font=face("data-bold", 22), fill=VALUE, anchor="rm")
+        draw.line([(PAD, H - PAD - 14), (W - PAD, H - PAD - 14)], fill=RULE)
+        draw.text((PAD, H - PAD - 6), state["caption"], font=ui, fill=MUTED)
 
-        return canvas.convert("P", palette=Image.ADAPTIVE, colors=96)
+        return canvas.convert("P", palette=Image.ADAPTIVE, colors=128)
 
-    def state(mark=0.0, rows=0, comments=False, query=False, revised=False, orphaned=False):
+    def state(mark=0.0, rows=0, comments=False, query=False, revised=False, orphaned=False, caption=""):
         return {
-            "mark": mark,
-            "rows": rows,
-            "comments": comments,
-            "query": query,
-            "revised": revised,
-            "orphaned": orphaned,
+            "mark": mark, "rows": rows, "comments": comments, "query": query,
+            "revised": revised, "orphaned": orphaned, "caption": caption,
         }
 
     frames = []
     hold = lambda s, n: frames.extend([render(s)] * n)  # noqa: E731
 
-    # 1. a page, and nothing recorded about it yet
-    hold(state(), 7)
+    hold(state(caption="A clause somebody needs to object to."), 7)
 
-    # 2. the mark is drawn
     for i in range(1, 7):
-        frames.append(render(state(mark=ease(i / 6))))
+        frames.append(render(state(mark=ease(i / 6), caption="Highlight it.")))
 
-    # 3. it becomes a row, a field at a time
-    for index in range(1, len(body_rows) + 2):
-        frames.append(render(state(mark=1.0, rows=index)))
+    for index in range(1, len(rows) + 2):
+        frames.append(render(state(mark=1.0, rows=index, caption="It is a row in your database.")))
 
-    full = dict(mark=1.0, rows=len(body_rows) + 1)
+    full = dict(mark=1.0, rows=len(rows) + 1)
 
-    hold(state(**full), 4)
-
-    # 4. which you can ask questions of
-    hold(state(**full, query=True), 8)
-
-    # 5. and discuss
-    hold(state(**full, query=True, comments=True), 9)
-
-    # 6. then the contract is re-issued, and the mark says so
-    hold(state(**full, query=True, comments=True, revised=True), 3)
-    hold(state(**full, query=True, comments=True, revised=True, orphaned=True), 14)
+    hold(state(**full, caption="It is a row in your database."), 4)
+    hold(state(**full, query=True, caption="So you can ask questions of it."), 9)
+    hold(state(**full, query=True, comments=True, caption="And discuss it, in your app."), 9)
+    hold(state(**full, query=True, comments=True, revised=True, caption="Then the contract is re-issued."), 4)
+    hold(
+        state(**full, query=True, comments=True, revised=True, orphaned=True,
+              caption="The seal breaks, and the mark says so instead of guessing."),
+        15,
+    )
 
     frames[0].save(
         ART / "demo.gif",
@@ -797,152 +902,13 @@ def demo():
     )
 
     size = (ART / "demo.gif").stat().st_size
-
     print(f"wrote demo.gif  {len(frames)} frames  {size / 1024:.0f}kb")
 
 
-# --------------------------------------------------------------------------
-# anchoring.png -- why user space and not viewport pixels
-# --------------------------------------------------------------------------
-
-def anchoring():
-    W, H = 1600, 700
-    canvas = plate(W, H)
-    draw = ImageDraw.Draw(canvas)
-
-    draw.text((44, 40), "Why the anchors are points and not pixels", fill=TEXT, font=font(26, True))
-    draw.text(
-        (44, 80),
-        "A viewport rectangle is only meaningful alongside the zoom, the rotation and the screen that produced it.",
-        fill=MUTED,
-        font=font(15),
-    )
-
-    anchor = HIGHLIGHT[0]
-
-    def drawn(turns, scale):
-        """The pixels the package would actually compute -- not a guess at them."""
-        left, top, right, bottom = to_viewport(anchor, PAGE, turns, scale)
-
-        return (
-            f"left {left:.0f}   top {top:.0f}\n"
-            f"width {right - left:.0f}   height {bottom - top:.0f}"
-        )
-
-    panels = [
-        (
-            "Stored",
-            f"x1 {anchor[0]:.1f}   y1 {anchor[1]:.1f}\nx2 {anchor[2]:.1f}   y2 {anchor[3]:.1f}",
-            "PDF points, bottom-left origin",
-        ),
-        ("Drawn at 100%", drawn(0, 1.0), "recomputed, then thrown away"),
-        ("Drawn at 175%, turned 90°", drawn(1, 1.75), "recomputed, then thrown away"),
-    ]
-
-    x = 44
-    width = (W - 88 - 40 * 2) // 3
-
-    for index, (title, body, note) in enumerate(panels):
-        box = [x, 140, x + width, 400]
-
-        draw.rounded_rectangle(box, radius=10, fill=CHROME, outline=ACCENT if index == 0 else LINE)
-        draw.text((x + 24, 166), title, fill=TEXT if index == 0 else MUTED, font=font(17, True))
-
-        cy = 212
-        for line in body.split("\n"):
-            draw.text((x + 24, cy), line, fill=(226, 232, 240) if index == 0 else MUTED, font=font(16))
-            cy += 26
-
-        draw.text((x + 24, 350), note, fill=MUTED if index == 0 else (113, 113, 122), font=font(13))
-
-        if index == 0:
-            draw.text((x + 24, 300), "persisted", fill=ACCENT_SOFT, font=font(13, True))
-
-        if index < 2:
-            draw.text((x + width + 20, 270), "→", fill=LINE, font=font(30), anchor="mm")
-
-        x += width + 40
-
-    draw.text(
-        (44, 450),
-        "Store the middle or right-hand column and the highlight moves the first time anything changes:",
-        fill=MUTED,
-        font=font(15),
-    )
-
-    for i, (bad, why) in enumerate([
-        ("a different zoom", "451 pixels wide is 451 points only at 100%"),
-        ("a retina screen", "device pixel ratio doubles every number"),
-        ("a narrower container", "the page is laid out to fit, and everything shifts"),
-        ("the page turned", "width and height swap, and the corners change places"),
-    ]):
-        y = 490 + i * 42
-        draw.ellipse([46, y + 6, 56, y + 16], fill=WARNING)
-        draw.text((72, y), bad, fill=(226, 232, 240), font=font(16, True))
-        draw.text((320, y + 1), why, fill=MUTED, font=font(15))
-
-    canvas.save(ART / "anchoring.png")
-    print("wrote anchoring.png")
-
-
-# --------------------------------------------------------------------------
-# orphan.png
-# --------------------------------------------------------------------------
-
-def orphan():
-    W, H = 1600, 620
-    canvas = plate(W, H)
-    draw = ImageDraw.Draw(canvas)
-
-    draw.text((44, 40), "When the document is replaced", fill=TEXT, font=font(26, True))
-    draw.text(
-        (44, 80),
-        "Every annotation records the sha256 of the bytes it was drawn on. When they stop matching, it says so.",
-        fill=MUTED,
-        font=font(15),
-    )
-
-    scale = 0.44
-    size = viewport_size(PAGE, 0, scale)
-
-    draw_page(canvas, (110, 150), 0, scale, orphan=False)
-    draw.text((110, 150 + size[1] + 16), "invoice.pdf   sha256 4f3a…", fill=MUTED, font=font(14))
-    draw.text((110, 150 + size[1] + 40), "3 annotations, all anchored", fill=(134, 239, 172), font=font(14))
-
-    arrow_x = 110 + size[0] + 90
-    draw.text((arrow_x, 150 + size[1] / 2), "→", fill=LINE, font=font(40), anchor="mm")
-    draw.text((arrow_x, 150 + size[1] / 2 + 40), "re-issued", fill=MUTED, font=font(14), anchor="mm")
-
-    right = arrow_x + 90
-    draw_page(canvas, (right, 150), 0, scale, orphan=True)
-    draw.text((right, 150 + size[1] + 16), "invoice.pdf   sha256 9c17…", fill=MUTED, font=font(14))
-    draw.text((right, 150 + size[1] + 40), "1 flagged, drawn with a warning", fill=WARNING_TEXT, font=font(14))
-
-    x = right + size[0] + 80
-    draw.rounded_rectangle([x, 150, W - 60, 150 + size[1]], radius=10, fill=CHROME, outline=LINE)
-
-    draw.text((x + 28, 182), "What Pindle does not do", fill=TEXT, font=font(18, True))
-
-    for i, line in enumerate([
-        "It does not hide the annotation.",
-        "Somebody objected to something, and",
-        "hiding it would lose the objection.",
-        "",
-        "It does not draw it where it says.",
-        "Those coordinates now point at a",
-        "different sentence.",
-        "",
-        "It flags it, and leaves the decision",
-        "to the people reading the document.",
-    ]):
-        draw.text((x + 28, 226 + i * 24), line, fill=MUTED, font=font(15))
-
-    canvas.save(ART / "orphan.png")
-    print("wrote orphan.png")
-
-
 if __name__ == "__main__":
+    check_rotation(HIGHLIGHT, 1.0)
+
     hero()
-    demo()
     anchoring()
     orphan()
+    demo()

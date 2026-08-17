@@ -127,17 +127,37 @@ final readonly class DocumentStream
             return;
         }
 
-        // Asked rather than attempted: seeking a stream that cannot be sought
+        // Asked before attempted, then checked afterwards.
+        //
+        // Asked, because seeking a stream that announces itself unseekable
         // raises a warning, and a warning is an exception in most Laravel
         // applications -- which would turn "this disk streams differently" into
         // a failed download.
+        //
+        // Checked, because the announcement is not reliable. Userland stream
+        // wrappers are reported seekable whether or not they implement seeking
+        // at all, and an adapter that accepts the seek and ignores it would
+        // otherwise have us serve the wrong slice of somebody's contract with
+        // complete confidence. `ftell` is the only answer worth trusting.
         if (stream_get_meta_data($stream)['seekable']) {
             fseek($stream, $start);
 
-            return;
+            if (ftell($stream) === $start) {
+                return;
+            }
         }
 
-        fread($stream, $start);
+        $remaining = $start - (int) ftell($stream);
+
+        while ($remaining > 0) {
+            $chunk = fread($stream, min(self::CHUNK, $remaining));
+
+            if ($chunk === false || $chunk === '') {
+                break;
+            }
+
+            $remaining -= strlen($chunk);
+        }
     }
 
     /**

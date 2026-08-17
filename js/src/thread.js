@@ -34,7 +34,7 @@ export function drawThread(panel, annotation, options = {}) {
   }
 
   panel.append(list);
-  panel.append(composer(annotation, null, options, 'Add a comment'));
+  panel.append(composer(annotation, null, options, 'Add comment', 'Leave a comment'));
 
   return panel;
 }
@@ -125,7 +125,7 @@ function comment(root, annotation, options) {
   return el('li', { class: 'pindle-thread__item' }, [
     body(root, annotation, options),
     replies,
-    options.readonly ? null : composer(annotation, root.id, options, 'Reply'),
+    options.readonly ? null : composer(annotation, root.id, options, 'Reply', 'Write a reply'),
   ]);
 }
 
@@ -146,13 +146,21 @@ function body(entry, annotation, options) {
   ]);
 }
 
-function composer(annotation, parentId, options, action) {
+/**
+ * The box and the button.
+ *
+ * The two say different things on purpose: the box invites, the button names
+ * what pressing it does. Putting the same four words in both -- which is easy
+ * to do and reads as a mistake -- makes the pair look like one control that has
+ * been rendered twice.
+ */
+function composer(annotation, parentId, options, action, invitation) {
   const input = el('textarea', {
     class: 'pindle-thread__input',
     rows: parentId ? '2' : '3',
     maxlength: String(options.maxLength || 2000),
-    placeholder: action,
-    'aria-label': action,
+    placeholder: invitation,
+    'aria-label': invitation,
   });
 
   const submit = () => {

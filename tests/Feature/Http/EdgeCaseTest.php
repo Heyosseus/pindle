@@ -11,6 +11,7 @@ use Pindle\Exceptions\DocumentUnreadable;
 use Pindle\Http\Requests\StoreAnnotationRequest;
 use Pindle\Tests\Fixtures\Invoice;
 use Pindle\Tests\Fixtures\InvoicePolicy;
+use Pindle\Tests\Fixtures\UnseekableStream;
 use Pindle\Tests\Fixtures\User;
 
 beforeEach(function (): void {
@@ -130,23 +131,34 @@ it('stops streaming when the document turns out to be shorter than it said', fun
     expect((string) ob_get_clean())->toBe('%PDF');
 });
 
-it('reads past an offset it cannot seek to', function (): void {
-    // A socket pair is the only readily available non-seekable stream, and the
-    // non-seekable branch is exactly what an S3 disk takes.
-    $pair = stream_socket_pair(STREAM_PF_INET, STREAM_SOCK_STREAM, STREAM_IPPROTO_IP);
+it('reads past an offset when the stream takes the seek and ignores it', function (): void {
+    $stream = UnseekableStream::open('skip-me-then-KEEP');
 
-    expect($pair)->toBeArray();
+    // The hazard this guards against: the stream announces itself seekable,
+    // accepts the call, and does not move. Trusting either the announcement or
+    // the call would serve the wrong slice of the document.
+    expect(stream_get_meta_data($stream)['seekable'])->toBeTrue();
 
-    [$read, $write] = $pair;
+    DocumentStream::skipTo($stream, 13);
 
-    fwrite($write, 'skip-me-then-KEEP');
-    fclose($write);
+    expect(ftell($stream))->toBe(13)
+        ->and(stream_get_contents($stream))->toBe('KEEP');
 
-    DocumentStream::skipTo($read, 13);
+    fclose($stream);
+});
 
-    expect(stream_get_contents($read))->toBe('KEEP');
+it('stops reading past an offset that is beyond the end of the stream', function (): void {
+    $stream = UnseekableStream::open('short');
 
-    fclose($read);
+    DocumentStream::skipTo($stream, 5_000);
+
+    expect(stream_get_contents($stream))->toBe('');
+
+    fclose($stream);
+});
+
+it('leaves a stream alone when it was handed something that is not one', function (): void {
+    expect(fn () => DocumentStream::skipTo('not a stream', 13))->not->toThrow(TypeError::class);
 });
 
 it('leaves a stream alone when there is nothing to skip', function (): void {
