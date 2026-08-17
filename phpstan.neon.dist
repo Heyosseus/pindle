@@ -6,6 +6,9 @@ parameters:
     level: max
     paths:
         - src
+        # The fixtures are the only classes that use HasAnnotations, and a trait
+        # nothing analysed uses is a trait PHPStan skips entirely.
+        - tests/Fixtures
     tmpDir: build/phpstan
     checkModelProperties: true
     checkOctaneCompatibility: true

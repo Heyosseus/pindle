@@ -77,7 +77,7 @@
                 "Pindle\\PindleServiceProvider"
             ],
             "aliases": {
-                "Pindle": "Pindle\\Facades\\Pindle"
+                "Pindle": "Pindle\\Pindle"
             }
         }
     },

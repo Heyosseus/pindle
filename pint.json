@@ -4,7 +4,6 @@
         "declare_strict_types": true,
         "strict_comparison": true,
         "strict_param": true,
-        "final_class": true,
         "global_namespace_import": {
             "import_classes": true,
             "import_constants": true,
