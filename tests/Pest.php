@@ -8,7 +8,9 @@ use Pindle\Enums\AnnotationType;
 use Pindle\Models\Annotation;
 use Pindle\Models\Comment;
 use Pindle\Tests\DisabledTestCase;
+use Pindle\Tests\FilamentTestCase;
 use Pindle\Tests\Fixtures\Invoice;
+use Pindle\Tests\LivewireTestCase;
 use Pindle\Tests\MisconfiguredTestCase;
 use Pindle\Tests\ScheduledTestCase;
 use Pindle\Tests\TestCase;
@@ -22,6 +24,14 @@ uses(TestCase::class)->in('Feature', 'Unit');
 uses(DisabledTestCase::class)->in('Disabled');
 uses(ScheduledTestCase::class)->in('Scheduled');
 uses(MisconfiguredTestCase::class)->in('Misconfigured');
+
+/*
+ * The adapters are optional, so the cases that boot Livewire and Filament are
+ * scoped to their own directories. Everything else in the suite runs with
+ * neither installed, which is how "never a hard dependency" is actually proven.
+ */
+uses(LivewireTestCase::class)->in('Livewire');
+uses(FilamentTestCase::class)->in('Filament');
 
 /**
  * A PDF on the fake disk, and an invoice pointing at it.

@@ -10,11 +10,13 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Livewire\Livewire;
 use Override;
 use Pindle\Console\Commands\PruneCommand;
 use Pindle\Contracts\DocumentResolver;
 use Pindle\Documents\AttributeDocumentResolver;
 use Pindle\Documents\ChainDocumentResolver;
+use Pindle\Livewire\PindleViewer;
 use Pindle\Policies\AnnotationPolicy;
 
 final class PindleServiceProvider extends ServiceProvider
@@ -86,6 +88,26 @@ final class PindleServiceProvider extends ServiceProvider
         Blade::componentNamespace('Pindle\\View\\Components', 'pindle');
 
         Blade::directive('pindleScripts', static fn (): string => "<?php echo \Pindle\Support\Assets::tags(); ?>");
+
+        $this->registerLivewire();
+    }
+
+    /**
+     * The optional Livewire wrapper, and only when there is a Livewire to
+     * register it with.
+     *
+     * The presence of the binding rather than of the class: a package can be
+     * installed as somebody else's transitive dependency without its provider
+     * ever having booted, and registering a component against a Livewire that
+     * is not running is how a bare unit test acquires a fatal error.
+     */
+    private function registerLivewire(): void
+    {
+        if (! class_exists(Livewire::class) || ! $this->app->bound('livewire')) {
+            return;
+        }
+
+        Livewire::component('pindle-viewer', PindleViewer::class);
     }
 
     /**
