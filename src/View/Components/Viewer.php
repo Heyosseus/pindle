@@ -12,6 +12,7 @@ use Illuminate\View\Component;
 use Pindle\Contracts\DocumentResolver;
 use Pindle\Documents\DocumentSignature;
 use Pindle\Documents\PindleDocument;
+use Pindle\Support\Assets;
 use Pindle\Support\Key;
 
 /**
@@ -123,9 +124,16 @@ final class Viewer extends Component
         return URL::to(is_string($prefix) ? $prefix : 'pindle');
     }
 
+    /**
+     * Version-stamped, through the same helper the script tags use.
+     *
+     * The renderer is four and a half megabytes and browsers cache it hard,
+     * which is exactly what you want until the day an upgrade ships a new one
+     * and half your users keep running the old.
+     */
     private function asset(string $file): string
     {
-        return asset('vendor/pindle/'.$file);
+        return app(Assets::class)->url($file);
     }
 
     private function maxCommentLength(): int

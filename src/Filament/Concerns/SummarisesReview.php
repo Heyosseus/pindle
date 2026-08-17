@@ -6,6 +6,7 @@ namespace Pindle\Filament\Concerns;
 
 use Closure;
 use Illuminate\Database\Eloquent\Model;
+use Pindle\Review\ReviewCache;
 use Pindle\Review\ReviewSummary;
 
 /**
@@ -36,11 +37,34 @@ trait SummarisesReview
 
     /**
      * Null where there is no record yet -- a create form, an empty table row.
+     *
+     * Routed through the request-scoped cache rather than straight at
+     * `ReviewSummary::for()`, because a column is asked this once per row and
+     * the honest answer for row one is the same work as the honest answer for
+     * all forty. {@see ReviewCache}.
      */
     public function getReview(): ?ReviewSummary
     {
         $record = $this->getRecord();
 
-        return $record instanceof Model ? ReviewSummary::for($record, $this->getDocumentKey()) : null;
+        if (! $record instanceof Model) {
+            return null;
+        }
+
+        return app(ReviewCache::class)->for($record, $this->getDocumentKey(), $this->pageOfRecords());
+    }
+
+    /**
+     * The other records being rendered alongside this one, where there are any.
+     *
+     * Nothing by default. An infolist entry sits on a record page and is the
+     * only one of its kind there, so it has nobody to batch with and asking
+     * would be a wasted question; the table column overrides this with its page.
+     *
+     * @return iterable<Model>
+     */
+    protected function pageOfRecords(): iterable
+    {
+        return [];
     }
 }

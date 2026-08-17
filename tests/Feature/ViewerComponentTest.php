@@ -12,7 +12,7 @@ use Pindle\Tests\Fixtures\User;
 beforeEach(function (): void {
     Gate::policy(Invoice::class, InvoicePolicy::class);
 
-    Assets::flush();
+    app(Assets::class)->flush();
 
     $this->invoice = invoiceWithDocument();
     $this->invoice->update(['tenant_id' => 1]);

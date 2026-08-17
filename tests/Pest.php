@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Pindle\Enums\AnnotationType;
 use Pindle\Models\Annotation;
@@ -138,6 +139,38 @@ function comment(Annotation $annotation, string $body, ?Comment $parent = null, 
     ]);
 
     return $comment;
+}
+
+/**
+ * The SQL a callback runs.
+ *
+ * Query counts are assertions here rather than a curiosity: the review badge on
+ * an index screen is the reason to install the package, and the difference
+ * between it costing two queries and costing two per row is the difference
+ * between a feature and a support ticket.
+ *
+ * @return list<string>
+ */
+function queriesDuring(Closure $work): array
+{
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $work();
+
+    DB::disableQueryLog();
+
+    $log = [];
+
+    foreach (DB::getQueryLog() as $entry) {
+        $sql = $entry['query'] ?? null;
+
+        if (is_string($sql)) {
+            $log[] = $sql;
+        }
+    }
+
+    return $log;
 }
 
 /**

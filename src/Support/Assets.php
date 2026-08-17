@@ -9,39 +9,55 @@ namespace Pindle\Support;
  *
  * Emitted once per request however many times the directive is called. A layout
  * that includes it and a Filament page that also does would otherwise load
- * PDFium twice -- nine megabytes of WebAssembly, and two viewers racing to mount
- * the same element.
+ * PDFium twice -- four and a half megabytes of WebAssembly, and two viewers
+ * racing to mount the same element.
+ *
+ * "Once per request" is why this is an object bound `scoped` in the container
+ * rather than a class with a static flag. Under Octane, FrankenPHP or any other
+ * worker runtime the process outlives the request, and a static flag set on the
+ * first request stays set: every subsequent response in that worker would omit
+ * the tags entirely and the viewer would simply never appear. Scoped bindings
+ * are forgotten between requests, which is exactly the lifetime this needs.
  *
  * @internal
  */
 final class Assets
 {
-    private static bool $emitted = false;
+    private bool $emitted = false;
 
-    public static function tags(): string
+    public function tags(): string
     {
-        if (self::$emitted) {
+        if ($this->emitted) {
             return '';
         }
 
-        self::$emitted = true;
-
-        $script = e(asset('vendor/pindle/pindle.js'));
-        $style = e(asset('vendor/pindle/pindle.css'));
+        $this->emitted = true;
 
         return sprintf(
             '<link rel="stylesheet" href="%s">'."\n".'<script src="%s" defer></script>',
-            $style,
-            $script,
+            e($this->url('pindle.css')),
+            e($this->url('pindle.js')),
         );
     }
 
     /**
-     * Forget that the tags were emitted. The flag is static, so it outlives the
-     * request in a long-running worker and in the test suite.
+     * A published asset's URL, stamped with the bundle's version.
+     *
+     * The stamp is what stops a browser serving last month's viewer out of its
+     * cache after an upgrade. It is the content hash rather than a release
+     * number, so it changes when and only when the file does -- a redeploy that
+     * did not touch the viewer does not invalidate anybody's cache.
      */
-    public static function flush(): void
+    public function url(string $file): string
     {
-        self::$emitted = false;
+        return asset('vendor/pindle/'.$file).'?id='.Bundle::version();
+    }
+
+    /**
+     * Forget that the tags were emitted, for a test that renders twice.
+     */
+    public function flush(): void
+    {
+        $this->emitted = false;
     }
 }
