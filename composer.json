@@ -1,0 +1,100 @@
+{
+    "name": "heyosseus/pindle",
+    "description": "Annotate PDFs attached to your Eloquent models: highlights, notes and comment threads pinned to exact coordinates on the page, stored in your own database. Blade, Livewire or Filament. No npm, no Vite.",
+    "keywords": [
+        "laravel",
+        "filament",
+        "livewire",
+        "pdf",
+        "annotations",
+        "highlight",
+        "comments",
+        "review",
+        "documents",
+        "viewer"
+    ],
+    "license": "MIT",
+    "homepage": "https://github.com/heyosseus/pindle",
+    "support": {
+        "issues": "https://github.com/heyosseus/pindle/issues",
+        "source": "https://github.com/heyosseus/pindle"
+    },
+    "authors": [
+        {
+            "name": "heyosseus",
+            "email": "ratiruxadzee@gmail.com"
+        }
+    ],
+    "require": {
+        "php": "^8.3",
+        "illuminate/console": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/contracts": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/database": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/filesystem": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/http": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/routing": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/support": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/validation": "^11.0 || ^12.0 || ^13.0",
+        "illuminate/view": "^11.0 || ^12.0 || ^13.0"
+    },
+    "require-dev": {
+        "larastan/larastan": "^3.0",
+        "laravel/pint": "^1.18",
+        "livewire/livewire": "^3.5 || ^4.0",
+        "orchestra/testbench": "^9.5 || ^10.0 || ^11.0",
+        "pestphp/pest": "^3.7 || ^4.0",
+        "pestphp/pest-plugin-laravel": "^3.1 || ^4.0",
+        "pestphp/pest-plugin-type-coverage": "^3.2 || ^4.0",
+        "rector/rector": "^2.0"
+    },
+    "suggest": {
+        "filament/filament": "Drop the viewer into a Filament panel as a form field or infolist entry (^4.0 || ^5.0).",
+        "livewire/livewire": "Wrap the viewer in a Livewire component that emits server-side events (^3.5 || ^4.0).",
+        "spatie/laravel-medialibrary": "Resolve the PDF from a media collection instead of a model attribute."
+    },
+    "autoload": {
+        "psr-4": {
+            "Pindle\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Pindle\\Tests\\": "tests/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "preferred-install": "dist",
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Pindle\\PindleServiceProvider"
+            ],
+            "aliases": {
+                "Pindle": "Pindle\\Facades\\Pindle"
+            }
+        }
+    },
+    "scripts": {
+        "lint": "pint",
+        "refacto": "rector",
+        "test:lint": "pint --test",
+        "test:refacto": "rector --dry-run",
+        "test:types": "phpstan analyse --ansi --memory-limit=512M",
+        "test:type-coverage": "pest --type-coverage --min=100",
+        "test:unit": "pest --colors=always --coverage --min=100",
+        "test": [
+            "@test:refacto",
+            "@test:lint",
+            "@test:types",
+            "@test:type-coverage",
+            "@test:unit"
+        ]
+    }
+}
