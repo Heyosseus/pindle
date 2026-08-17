@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
 use Override;
+use Pindle\Console\Commands\DoctorCommand;
 use Pindle\Console\Commands\ExportCommand;
+use Pindle\Console\Commands\InstallCommand;
 use Pindle\Console\Commands\PruneCommand;
 use Pindle\Contracts\DocumentResolver;
 use Pindle\Documents\AttributeDocumentResolver;
@@ -64,7 +66,12 @@ final class PindleServiceProvider extends ServiceProvider
         $this->registerSchedule();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ExportCommand::class, PruneCommand::class]);
+            $this->commands([
+                DoctorCommand::class,
+                ExportCommand::class,
+                InstallCommand::class,
+                PruneCommand::class,
+            ]);
 
             $this->publishes([
                 __DIR__.'/../config/pindle.php' => $this->app->configPath('pindle.php'),

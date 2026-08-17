@@ -110,10 +110,10 @@ final class AnnotationController
         }
 
         if ($request->has('resolved')) {
-            $resolved = $request->boolean('resolved');
-
-            $changes['resolved_at'] = $resolved ? now() : null;
-            $changes['resolved_by_id'] = $resolved ? Author::current()->id : null;
+            // The same shape the model writes when an approval job settles
+            // something, so resolving over HTTP and resolving from code cannot
+            // drift into producing different rows.
+            $changes += Pindle::annotationModel()::resolution($request->boolean('resolved'), Author::current());
         }
 
         $annotation->update($changes);

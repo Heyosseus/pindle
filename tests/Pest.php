@@ -142,6 +142,42 @@ function comment(Annotation $annotation, string $body, ?Comment $parent = null, 
 }
 
 /**
+ * Remove the viewer from the skeleton's public directory.
+ *
+ * Published assets outlive the test that wrote them, and "is the published
+ * bundle current" is a question several tests answer differently, so the state
+ * is cleared either side rather than left for whichever runs next.
+ */
+function clearPublishedAssets(): void
+{
+    $published = public_path('vendor/pindle');
+
+    if (! is_dir($published)) {
+        return;
+    }
+
+    foreach ((array) glob($published.'/*') as $file) {
+        if (is_string($file)) {
+            unlink($file);
+        }
+    }
+
+    rmdir($published);
+}
+
+/** The viewer, exactly as `vendor:publish --tag=pindle-assets` leaves it. */
+function publishAssets(): void
+{
+    $published = public_path('vendor/pindle');
+
+    mkdir($published, recursive: true);
+
+    foreach (Pindle\Support\Bundle::FILES as $file) {
+        copy(Pindle\Support\Bundle::packagedPath().'/'.$file, $published.'/'.$file);
+    }
+}
+
+/**
  * The SQL a callback runs.
  *
  * Query counts are assertions here rather than a curiosity: the review badge on

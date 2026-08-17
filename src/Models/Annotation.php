@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace Pindle\Models;
 
 use Carbon\CarbonInterface;
+use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Date;
 use Pindle\Casts\RectsCast;
+use Pindle\Database\Factories\AnnotationFactory;
 use Pindle\Documents\PindleDocument;
 use Pindle\Enums\AnnotationType;
 use Pindle\Events\AnnotationCreated;
@@ -21,6 +25,7 @@ use Pindle\Events\AnnotationResolved;
 use Pindle\Events\AnnotationUpdated;
 use Pindle\Geometry\Rects;
 use Pindle\Pindle;
+use Pindle\Support\Author;
 use Pindle\Support\Key;
 
 /**
@@ -52,6 +57,9 @@ use Pindle\Support\Key;
  */
 class Annotation extends Model
 {
+    /** @use HasFactory<AnnotationFactory> */
+    use HasFactory;
+
     use HasUlids;
     use SoftDeletes;
 
@@ -127,6 +135,46 @@ class Annotation extends Model
     }
 
     /**
+     * Settle it, recording who settled it.
+     *
+     * Here rather than only in the controller because settling an objection is
+     * something applications do outside a request -- an approval job, an
+     * importer, a "close everything on this superseded revision" command -- and
+     * all of them should raise the same event the reviewer's click does.
+     */
+    public function resolve(?Model $by = null): bool
+    {
+        $actor = $by ?? Auth::user();
+
+        return $this->update(self::resolution(
+            true,
+            $actor instanceof Authenticatable ? Author::of($actor) : null,
+        ));
+    }
+
+    /** Re-open it, and forget who had settled it. */
+    public function unresolve(): bool
+    {
+        return $this->update(self::resolution(false, null));
+    }
+
+    /**
+     * The columns that say whether something is settled.
+     *
+     * One shape, used by the model and by the endpoint, so that resolving over
+     * HTTP and resolving from a job cannot drift into writing different rows.
+     *
+     * @return array<string, mixed>
+     */
+    public static function resolution(bool $resolved, ?Author $by): array
+    {
+        return [
+            'resolved_at' => $resolved ? Date::now() : null,
+            'resolved_by_id' => $resolved ? $by?->id : null,
+        ];
+    }
+
+    /**
      * Annotations on one document of one model.
      *
      * @param  Builder<$this>  $query
@@ -147,6 +195,66 @@ class Annotation extends Model
     public function scopeUnresolved(Builder $query): Builder
     {
         return $query->whereNull('resolved_at');
+    }
+
+    /**
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
+    public function scopeResolved(Builder $query): Builder
+    {
+        return $query->whereNotNull('resolved_at');
+    }
+
+    /**
+     * Annotations anchored to something other than the document as it stands.
+     *
+     * The complement of "still points at the right words". Reading it as a scope
+     * rather than as a check per row is what makes a nightly report possible:
+     * one query per document instead of one per mark.
+     *
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
+    public function scopeOrphanedFrom(Builder $query, PindleDocument $document): Builder
+    {
+        return $query->where('document_hash', '!=', $document->hash());
+    }
+
+    /**
+     * Annotations whose anchored text or discussion mentions something.
+     *
+     * A plain `LIKE` over the snippet and the thread rather than a full-text
+     * index, because Pindle does not own your database and cannot add one. It is
+     * enough to find "clause 4" among a few thousand marks, and an application
+     * that outgrows it has Scout.
+     *
+     * `%` and `_` are removed from the term rather than escaped. Escaping them
+     * needs an `ESCAPE` clause, the drivers disagree about whether there is a
+     * default one, and the alternative -- leaving them in -- means a search for
+     * "100%" quietly matches every row containing "100" and a search for "%"
+     * matches the entire table.
+     *
+     * @param  Builder<$this>  $query
+     * @return Builder<$this>
+     */
+    public function scopeSearch(Builder $query, string $term): Builder
+    {
+        $term = trim(str_replace(['%', '_'], '', $term));
+
+        if ($term === '') {
+            return $query;
+        }
+
+        $like = '%'.$term.'%';
+
+        return $query->where(static function (Builder $inner) use ($like): void {
+            $inner
+                ->where('text_snippet', 'like', $like)
+                ->orWhereHas('comments', static function (Builder $comments) use ($like): void {
+                    $comments->getQuery()->where('body', 'like', $like);
+                });
+        });
     }
 
     /**
@@ -183,6 +291,14 @@ class Annotation extends Model
                 AnnotationDeleted::dispatch($annotation, Auth::user());
             }
         });
+    }
+
+    /**
+     * The factory an application's own tests reach through `Annotation::factory()`.
+     */
+    protected static function newFactory(): AnnotationFactory
+    {
+        return AnnotationFactory::new();
     }
 
     /**

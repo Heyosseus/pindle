@@ -28,7 +28,7 @@ final class Bundle
      *
      * @var list<string>
      */
-    public const FILES = ['pindle.js', 'pindle.css', 'pdfium.wasm'];
+    public const array FILES = ['pindle.js', 'pindle.css', 'pdfium.wasm'];
 
     /**
      * The files a version is computed over.
@@ -40,7 +40,7 @@ final class Bundle
      *
      * @var list<string>
      */
-    private const VERSIONED = ['pindle.js', 'pindle.css'];
+    private const array VERSIONED = ['pindle.js', 'pindle.css'];
 
     private static ?string $version = null;
 
