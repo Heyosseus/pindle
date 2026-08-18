@@ -43,6 +43,7 @@ final class Diagnostics
             self::disk($config),
             self::assets(),
             self::middleware($config),
+            self::throttle($config),
             self::signedUrls($config),
             self::policies(),
         ];
@@ -207,6 +208,29 @@ final class Diagnostics
                 ? 'No middleware at all, so every request arrives as a guest.'
                 : 'Nothing authenticating in: '.implode(', ', $stack).'.',
             'Add "auth" to pindle.routes.middleware unless your policies really do answer for guests.',
+        );
+    }
+
+    /**
+     * Whether the write endpoints are rate limited.
+     *
+     * A warning rather than a failure: an application that limits for itself,
+     * at the edge or in its own middleware stack, is better off than one that
+     * limits twice. But an application that turned the shipped limit off and
+     * forgot is worth telling.
+     */
+    private static function throttle(Repository $config): Diagnosis
+    {
+        $limit = $config->get('pindle.routes.throttle');
+
+        if (is_string($limit) && trim($limit) !== '') {
+            return Diagnosis::pass('Write rate limit', 'throttle:'.trim($limit).' on the write endpoints.');
+        }
+
+        return Diagnosis::warn(
+            'Write rate limit',
+            'None, so a single client can write as fast as it can ask.',
+            'Set pindle.routes.throttle to a rate ("60,1") or a named limiter, unless you limit these routes yourself.',
         );
     }
 

@@ -60,6 +60,7 @@ it('says everything checks out only when nothing warned either', function (): vo
     publishAssets();
 
     config()->set('pindle.routes.middleware', ['web', 'auth']);
+    config()->set('pindle.routes.throttle', '60,1');
     config()->set('filesystems.disks.private', ['driver' => 'local', 'root' => storage_path('app/private')]);
     config()->set('pindle.documents.disk', 'private');
 

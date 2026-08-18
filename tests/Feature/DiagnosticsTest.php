@@ -156,6 +156,23 @@ it('warns when nothing establishes who is asking', function (): void {
     expect(diagnosis('Route middleware')->detail)->toContain('No middleware at all');
 });
 
+it('warns when the write endpoints are not rate limited', function (): void {
+    // Testbench's own route config wins over the shipped file, so the limit the
+    // package ships with has to be put back before it can be read here. That the
+    // shipped default is a limit at all is asserted in the throttle test.
+    config()->set('pindle.routes.throttle', '60,1');
+
+    expect(diagnosis('Write rate limit'))
+        ->severity->toBe(Severity::Pass)
+        ->detail->toContain('throttle:60,1');
+
+    config()->set('pindle.routes.throttle', null);
+
+    expect(diagnosis('Write rate limit'))
+        ->severity->toBe(Severity::Warn)
+        ->fix->toContain('pindle.routes.throttle');
+});
+
 it('fails a signed url lifetime that expires on arrival', function (): void {
     config()->set('pindle.documents.url_ttl', 0);
 

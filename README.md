@@ -253,6 +253,24 @@ _edit_ one lets you write on it. Separate them by naming an ability of your own:
 
 An unmapped ability denies. Emptying the map closes the door; it never opens it.
 
+### Rate limiting
+
+The write endpoints ship behind `throttle:60,1`; the read endpoints deliberately
+do not. Rendering one page of a large PDF is a burst of range requests — PDFium
+asks for whatever byte spans it needs and asks again on every scroll — so a limit
+tight enough to matter for writing would break reading. Posting a comment is one
+request a person makes, which is the shape a rate limit is actually for.
+
+```php
+// config/pindle.php
+'routes' => [
+    'throttle' => env('PINDLE_THROTTLE', '60,1'), // a rate, or the name of a limiter
+],
+```
+
+Set it to `null` if you would rather limit these routes yourself; `pindle:doctor`
+will mention that you did, once.
+
 ## Multi-tenancy
 
 **Pindle has no tenant column, and does not need one.** An annotation is
