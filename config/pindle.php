@@ -48,12 +48,20 @@ return [
     | than through a stack of its own, so an empty list here means the endpoints
     | are still governed, just not authenticated.
     |
+    | The throttle applies to writes only. Rendering a page of a large PDF is a
+    | burst of range requests, so a limit tight enough to matter for writing
+    | would break reading; posting a comment is one request a person makes, which
+    | is the shape a rate limit is actually for. Either a rate ("60,1") or the
+    | name of a limiter you registered. Null means you would rather do it
+    | yourself.
+    |
     */
 
     'routes' => [
         'prefix' => env('PINDLE_PATH', 'pindle'),
         'domain' => env('PINDLE_DOMAIN'),
         'middleware' => ['web', 'auth'],
+        'throttle' => env('PINDLE_THROTTLE', '60,1'),
     ],
 
     /*

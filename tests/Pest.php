@@ -15,6 +15,7 @@ use Pindle\Tests\LivewireTestCase;
 use Pindle\Tests\MisconfiguredTestCase;
 use Pindle\Tests\ScheduledTestCase;
 use Pindle\Tests\TestCase;
+use Pindle\Tests\ThrottledTestCase;
 
 uses(TestCase::class)->in('Feature', 'Unit');
 
@@ -25,6 +26,12 @@ uses(TestCase::class)->in('Feature', 'Unit');
 uses(DisabledTestCase::class)->in('Disabled');
 uses(ScheduledTestCase::class)->in('Scheduled');
 uses(MisconfiguredTestCase::class)->in('Misconfigured');
+
+/*
+ * The write limit is attached to the routes as they are registered, so the tests
+ * that prove it boot an application whose limit is low enough to reach.
+ */
+uses(ThrottledTestCase::class)->in('Throttled');
 
 /*
  * The adapters are optional, so the cases that boot Livewire and Filament are
