@@ -11,7 +11,7 @@ use Pindle\Support\Throttle;
  */
 
 it('adds nothing when the application would rather limit for itself', function (): void {
-    config()->set('pindle.routes.throttle', null);
+    config(['pindle.routes.throttle' => null]);
 
     expect(Throttle::middleware())->toBe([]);
 

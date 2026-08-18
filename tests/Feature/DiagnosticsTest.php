@@ -166,7 +166,7 @@ it('warns when the write endpoints are not rate limited', function (): void {
         ->severity->toBe(Severity::Pass)
         ->detail->toContain('throttle:60,1');
 
-    config()->set('pindle.routes.throttle', null);
+    config(['pindle.routes.throttle' => null]);
 
     expect(diagnosis('Write rate limit'))
         ->severity->toBe(Severity::Warn)
