@@ -6,11 +6,13 @@ namespace Pindle\Models;
 
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Auth;
+use Pindle\Database\Factories\CommentFactory;
 use Pindle\Events\CommentPosted;
 use Pindle\Pindle;
 
@@ -33,6 +35,9 @@ use Pindle\Pindle;
  */
 class Comment extends Model
 {
+    /** @use HasFactory<CommentFactory> */
+    use HasFactory;
+
     use HasUlids;
     use SoftDeletes;
 
@@ -87,6 +92,14 @@ class Comment extends Model
     public function threadRoot(): self
     {
         return $this->parent_id === null ? $this : $this->parent()->firstOrFail();
+    }
+
+    /**
+     * The factory an application's own tests reach through `Comment::factory()`.
+     */
+    protected static function newFactory(): CommentFactory
+    {
+        return CommentFactory::new();
     }
 
     /**

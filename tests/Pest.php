@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Pindle\Enums\AnnotationType;
 use Pindle\Models\Annotation;
@@ -14,6 +15,7 @@ use Pindle\Tests\LivewireTestCase;
 use Pindle\Tests\MisconfiguredTestCase;
 use Pindle\Tests\ScheduledTestCase;
 use Pindle\Tests\TestCase;
+use Pindle\Tests\ThrottledTestCase;
 
 uses(TestCase::class)->in('Feature', 'Unit');
 
@@ -24,6 +26,12 @@ uses(TestCase::class)->in('Feature', 'Unit');
 uses(DisabledTestCase::class)->in('Disabled');
 uses(ScheduledTestCase::class)->in('Scheduled');
 uses(MisconfiguredTestCase::class)->in('Misconfigured');
+
+/*
+ * The write limit is attached to the routes as they are registered, so the tests
+ * that prove it boot an application whose limit is low enough to reach.
+ */
+uses(ThrottledTestCase::class)->in('Throttled');
 
 /*
  * The adapters are optional, so the cases that boot Livewire and Filament are
@@ -138,6 +146,74 @@ function comment(Annotation $annotation, string $body, ?Comment $parent = null, 
     ]);
 
     return $comment;
+}
+
+/**
+ * Remove the viewer from the skeleton's public directory.
+ *
+ * Published assets outlive the test that wrote them, and "is the published
+ * bundle current" is a question several tests answer differently, so the state
+ * is cleared either side rather than left for whichever runs next.
+ */
+function clearPublishedAssets(): void
+{
+    $published = public_path('vendor/pindle');
+
+    if (! is_dir($published)) {
+        return;
+    }
+
+    foreach ((array) glob($published.'/*') as $file) {
+        if (is_string($file)) {
+            unlink($file);
+        }
+    }
+
+    rmdir($published);
+}
+
+/** The viewer, exactly as `vendor:publish --tag=pindle-assets` leaves it. */
+function publishAssets(): void
+{
+    $published = public_path('vendor/pindle');
+
+    mkdir($published, recursive: true);
+
+    foreach (Pindle\Support\Bundle::FILES as $file) {
+        copy(Pindle\Support\Bundle::packagedPath().'/'.$file, $published.'/'.$file);
+    }
+}
+
+/**
+ * The SQL a callback runs.
+ *
+ * Query counts are assertions here rather than a curiosity: the review badge on
+ * an index screen is the reason to install the package, and the difference
+ * between it costing two queries and costing two per row is the difference
+ * between a feature and a support ticket.
+ *
+ * @return list<string>
+ */
+function queriesDuring(Closure $work): array
+{
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $work();
+
+    DB::disableQueryLog();
+
+    $log = [];
+
+    foreach (DB::getQueryLog() as $entry) {
+        $sql = $entry['query'] ?? null;
+
+        if (is_string($sql)) {
+            $log[] = $sql;
+        }
+    }
+
+    return $log;
 }
 
 /**

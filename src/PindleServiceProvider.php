@@ -12,13 +12,17 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
 use Override;
+use Pindle\Console\Commands\DoctorCommand;
 use Pindle\Console\Commands\ExportCommand;
+use Pindle\Console\Commands\InstallCommand;
 use Pindle\Console\Commands\PruneCommand;
 use Pindle\Contracts\DocumentResolver;
 use Pindle\Documents\AttributeDocumentResolver;
 use Pindle\Documents\ChainDocumentResolver;
 use Pindle\Livewire\PindleViewer;
 use Pindle\Policies\AnnotationPolicy;
+use Pindle\Review\ReviewCache;
+use Pindle\Support\Assets;
 
 final class PindleServiceProvider extends ServiceProvider
 {
@@ -36,6 +40,17 @@ final class PindleServiceProvider extends ServiceProvider
         ]));
 
         $this->app->singleton(AnnotationPolicy::class);
+
+        // Scoped, not singleton. It remembers whether the script tags have gone
+        // out yet, and that is true of a request rather than of a process --
+        // under Octane a singleton would answer "already emitted" for every
+        // response after the first and the viewer would never load again.
+        $this->app->scoped(Assets::class);
+
+        // Same lifetime, same reason: a page's review summaries are worth
+        // remembering across the forty rows that ask for them, and worth
+        // forgetting the moment the response is sent.
+        $this->app->scoped(ReviewCache::class);
     }
 
     public function boot(): void
@@ -51,7 +66,12 @@ final class PindleServiceProvider extends ServiceProvider
         $this->registerSchedule();
 
         if ($this->app->runningInConsole()) {
-            $this->commands([ExportCommand::class, PruneCommand::class]);
+            $this->commands([
+                DoctorCommand::class,
+                ExportCommand::class,
+                InstallCommand::class,
+                PruneCommand::class,
+            ]);
 
             $this->publishes([
                 __DIR__.'/../config/pindle.php' => $this->app->configPath('pindle.php'),
@@ -88,7 +108,7 @@ final class PindleServiceProvider extends ServiceProvider
 
         Blade::componentNamespace('Pindle\\View\\Components', 'pindle');
 
-        Blade::directive('pindleScripts', static fn (): string => "<?php echo \Pindle\Support\Assets::tags(); ?>");
+        Blade::directive('pindleScripts', static fn (): string => "<?php echo app(\Pindle\Support\Assets::class)->tags(); ?>");
 
         $this->registerLivewire();
     }
